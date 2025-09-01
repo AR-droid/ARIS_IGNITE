@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ARIS-Advanced Research Innovative Solution</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .chat-box { 
+      max-height: 400px; 
+      overflow-y: auto; 
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 #f1f5f9;
+    }
+    .chat-box::-webkit-scrollbar {
+      width: 6px;
+    }
+    .chat-box::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 3px;
+    }
+    .chat-box::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    .message { 
+      margin: .5rem 0; 
+      padding: .75rem 1rem; 
+      border-radius: 1rem; 
+      max-width: 85%; 
+      word-wrap: break-word;
+      animation: fadeInUp 0.3s ease-out;
+    }
+    .user { 
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8); 
+      color: white; 
+      margin-left: auto; 
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    .bot { 
+      background: #f8fafc; 
+      color: #1e293b; 
+      margin-right: auto; 
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .paper-card {
+      transition: all 0.3s ease;
+      transform: translateY(0);
+    }
+    .paper-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    .search-container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body class="font-sans text-gray-800">
+  <!-- Header -->
+  <div class="text-center py-8">
+    <div class="inline-flex items-center space-x-3 mb-4">
+      <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+        <i class="fas fa-brain text-2xl text-blue-600"></i>
+      </div>
+      <h1 class="text-4xl font-bold text-white">ARIS IGNITE</h1>
+    </div>
+    <p class="text-white/90 text-lg max-w-2xl mx-auto">
+      AI-Powered Research Assistant • Discover • Analyze • Transform
+    </p>
+  </div>
+
+  <!-- Search Section -->
+  <div class="max-w-4xl mx-auto px-6 mb-8">
+    <div class="search-container rounded-2xl p-8 text-center">
+      <div class="max-w-2xl mx-auto">
+        <h2 class="text-2xl font-semibold text-white mb-4">Find Research Papers</h2>
+        <p class="text-white/80 mb-6">Search through 250M+ research papers with AI-powered semantic understanding</p>
+        
+        <div class="flex gap-3 mb-4">
+          <div class="flex-1 relative">
+            <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input 
+              id="query" 
+              class="w-full pl-12 pr-4 py-4 rounded-xl border-0 text-lg focus:ring-4 focus:ring-blue-300 focus:outline-none" 
+              placeholder="Search papers (e.g., quantum computing, machine learning, climate change)..." 
+              onkeypress="if(event.key==='Enter') searchPapers()"
+            />
+          </div>
+          <button 
+            onclick="searchPapers()" 
+            id="searchBtn"
+            class="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
+          >
+            <i class="fas fa-search"></i>
+            Search
+          </button>
+        </div>
+        
+        <div class="flex flex-wrap gap-2 justify-center text-sm text-white/80">
+          <span class="px-3 py-1 bg-white/20 rounded-full">Semantic Search</span>
+          <span class="px-3 py-1 bg-white/20 rounded-full">AI Analysis</span>
+          <span class="px-3 py-1 bg-white/20 rounded-full">Multi-level Summaries</span>
+          <span class="px-3 py-1 bg-white/20 rounded-full">Interactive Chat</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results Section -->
+  <div id="results" class="max-w-6xl mx-auto px-6 space-y-6"></div>
+
+  <!-- Loading State -->
+  <div id="loading" class="hidden text-center py-12">
+    <div class="loading mx-auto mb-4"></div>
+    <p class="text-white/80">Searching through research papers...</p>
+  </div>
+
+  <!-- No Results State -->
+  <div id="noResults" class="hidden text-center py-12">
+    <i class="fas fa-search text-4xl text-white/60 mb-4"></i>
+    <p class="text-white/80 text-lg">No papers found. Try different keywords or check your spelling.</p>
+  </div>
+
+  <script>
+    let currentSearchResults = [];
+    
+    // Diagram types for frontend reference
+    const DIAGRAM_TYPES = {
+      "flowchart": { name: "Flowchart", icon: "🔄" },
+      "mindmap": { name: "Mind Map", icon: "🧠" },
+      "timeline": { name: "Timeline", icon: "⏰" },
+      "venn": { name: "Venn Diagram", icon: "⭕" },
+      "hierarchy": { name: "Hierarchy Chart", icon: "🏗️" },
+      "network": { name: "Network Diagram", icon: "🕸️" },
+      "comparison": { name: "Comparison Table", icon: "📊" },
+      "custom": { name: "Custom Diagram", icon: "🎨" }
+    };
+
+    async function searchPapers() {
+      const query = document.getElementById('query').value.trim();
+      if (!query) {
+        showNotification('Please enter a search term', 'error');
+        return;
+      }
+
+      // Show loading state
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('noResults').classList.add('hidden');
+      
+      // Disable search button
+      const searchBtn = document.getElementById('searchBtn');
+      searchBtn.disabled = true;
+      searchBtn.innerHTML = '<div class="loading w-5 h-5"></div> Searching...';
+
+      try {
+        const res = await fetch('/search', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ query: query })
+        });
+        
+        const data = await res.json();
+        
+        if (data.error) {
+          showNotification(data.error, 'error');
+          return;
+        }
+
+        const papers = data.papers || [];
+        currentSearchResults = papers;
+        
+        if (papers.length === 0) {
+          document.getElementById('noResults').classList.remove('hidden');
+        } else {
+          displayResults(papers);
+        }
+        
+      } catch (error) {
+        showNotification('Search failed. Please try again.', 'error');
+        console.error('Search error:', error);
+      } finally {
+        // Hide loading state
+        document.getElementById('loading').classList.add('hidden');
+        
+        // Re-enable search button
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = '<i class="fas fa-search"></i> Search';
+      }
+    }
+
+    function displayResults(papers) {
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+
+      papers.forEach((paper, index) => {
+        const card = createPaperCard(paper, index);
+        results.appendChild(card);
+      });
+    }
+
+    function createPaperCard(paper, index) {
+      const card = document.createElement('div');
+      card.className = 'paper-card glass-card rounded-2xl p-6 shadow-lg';
+      
+      const authors = (paper.authors && paper.authors.length) ? paper.authors.join(', ') : 'Unknown Authors';
+      const hasPDF = paper.download_url || paper.pdf_preview;
+
+      card.innerHTML = `
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex-1">
+            <h3 class="text-xl font-bold text-gray-800 mb-2 leading-tight">${escapeHtml(paper.title || 'No Title')}</h3>
+            <div class="flex items-center gap-4 text-sm text-gray-600 mb-3">
+              <span class="flex items-center gap-1">
+                <i class="fas fa-users"></i>
+                ${escapeHtml(authors)}
+              </span>
+              <span class="flex items-center gap-1">
+                <i class="fas fa-file-pdf ${hasPDF ? 'text-red-500' : 'text-gray-400'}"></i>
+                ${hasPDF ? 'PDF Available' : 'PDF Not Available'}
+              </span>
+            </div>
+          </div>
+          <div class="ml-4 flex flex-col gap-2">
+            ${paper.download_url ? 
+              `<a href="${paper.download_url}" class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                <i class="fas fa-download"></i>
+                Open PDF
+              </a>` : ''
+            }
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <p class="text-gray-700 leading-relaxed">${escapeHtml(paper.abstract || 'No abstract available.')}</p>
+        </div>
+
+        ${paper.pdf_preview ? 
+          `<div class="mb-4 bg-gray-50 rounded-lg p-2">
+            <div class="text-sm text-gray-600 mb-2 flex items-center gap-2">
+              <i class="fas fa-eye"></i>
+              PDF Preview
+            </div>
+            <embed src="${paper.pdf_preview}" type="application/pdf" width="100%" height="300px" class="rounded border">
+          </div>` : ''
+        }
+
+        <div class="flex flex-wrap gap-3 mb-4">
+          <button 
+            onclick="summarize('${paper.id}', ${index})" 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            <i class="fas fa-brain"></i>
+            AI Summarize
+          </button>
+          <button 
+            onclick="toggleChat(${index})" 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg hover:from-indigo-700 hover:to-indigo-800 transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            <i class="fas fa-comments"></i>
+            Chat with Paper
+          </button>
+          <button 
+            onclick="toggleDiagram(${index})" 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            <i class="fas fa-chart-pie"></i>
+            Generate Diagram
+          </button>
+        </div>
+
+        <!-- Summaries Section -->
+        <div id="summaries-${index}" class="hidden space-y-4">
+          <div class="border-t pt-4">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fas fa-chart-line text-blue-600"></i>
+              AI-Generated Summaries
+            </h4>
+            
+            <!-- Progress Indicator -->
+            <div id="progress-${index}" class="mb-4 hidden">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="loading w-4 h-4"></div>
+                <span class="text-sm text-gray-600">Generating summaries...</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="progress-bar-${index}" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+              </div>
+              <div class="flex justify-between text-xs text-gray-500 mt-1">
+                <span id="progress-text-${index}">0/4 complete</span>
+                <span id="progress-time-${index}">0s</span>
+              </div>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 mb-4">
+              <button onclick="showTab(${index}, 'scratch')" class="tab-btn px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" data-tab="scratch">
+                <i class="fas fa-graduation-cap mr-2"></i>High School
+              </button>
+              <button onclick="showTab(${index}, 'undergrad')" class="tab-btn px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" data-tab="undergrad">
+                <i class="fas fa-user-graduate mr-2"></i>Undergraduate
+              </button>
+              <button onclick="showTab(${index}, 'masters')" class="tab-btn px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" data-tab="masters">
+                <i class="fas fa-user-tie mr-2"></i>Master's
+              </button>
+              <button onclick="showTab(${index}, 'high')" class="tab-btn px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors" data-tab="high">
+                <i class="fas fa-crown mr-2"></i>Expert
+              </button>
+            </div>
+            
+            <div id="tab-scratch-${index}" class="tab-content p-4 bg-blue-50 rounded-lg border-l-4 border-blue-400"></div>
+            <div id="tab-undergrad-${index}" class="tab-content p-4 bg-green-50 rounded-lg border-l-4 border-green-400"></div>
+            <div id="tab-masters-${index}" class="tab-content p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-400"></div>
+            <div id="tab-high-${index}" class="tab-content p-4 bg-purple-50 rounded-lg border-l-4 border-purple-400"></div>
+          </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chat-card-${index}" class="hidden">
+          <div class="border-t pt-4">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fas fa-robot text-indigo-600"></i>
+              AI Research Assistant
+            </h4>
+            
+            <div id="chat-box-${index}" class="chat-box mb-4 p-4 bg-gray-50 rounded-lg border min-h-[200px]"></div>
+            
+            <div class="flex gap-3">
+              <input 
+                id="chat-input-${index}" 
+                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none" 
+                placeholder="Ask a question about this research paper..." 
+                onkeypress="if(event.key==='Enter') sendChat('${paper.id}', ${index})"
+              />
+              <button 
+                onclick="sendChat('${paper.id}', ${index})" 
+                class="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center gap-2"
+              >
+                <i class="fas fa-paper-plane"></i>
+                Ask
+              </button>
+            </div>
+            
+            <div class="mt-3 text-sm text-gray-600">
+              <i class="fas fa-lightbulb mr-2"></i>
+              Try asking: "What are the main findings?", "How does this compare to other research?", "What are the limitations?"
+            </div>
+          </div>
+        </div>
+
+        <!-- Diagram Generation Section -->
+        <div id="diagram-card-${index}" class="hidden">
+          <div class="border-t pt-4">
+            <h4 class="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <i class="fas fa-chart-pie text-purple-600"></i>
+              AI Diagram Generator
+            </h4>
+            
+            <!-- Diagram Type Selection -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-gray-700 mb-2">Choose Diagram Type:</label>
+              <div id="diagram-types-${index}" class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <!-- Diagram types will be loaded here -->
+              </div>
+            </div>
+            
+            <!-- Custom Description Input -->
+            <div id="custom-description-${index}" class="mb-4 hidden">
+              <label class="block text-sm font-medium text-gray-700 mb-2">Custom Description:</label>
+              <textarea 
+                id="custom-input-${index}"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:outline-none"
+                rows="3"
+                placeholder="Describe the diagram you want to create..."
+              ></textarea>
+            </div>
+            
+            <!-- Generate Button -->
+            <div class="mb-4">
+              <button 
+                onclick="generateDiagram('${paper.id}', ${index})" 
+                id="generate-diagram-btn-${index}"
+                class="px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <i class="fas fa-magic"></i>
+                Generate Diagram
+              </button>
+            </div>
+            
+            <!-- Diagram Result -->
+            <div id="diagram-result-${index}" class="hidden">
+              <div class="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-400">
+                <h5 class="font-semibold text-purple-800 mb-2">Generated Diagram:</h5>
+                <div id="diagram-content-${index}" class="text-gray-700"></div>
+                <div id="diagram-metadata-${index}" class="mt-3 text-sm text-gray-600"></div>
+              </div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="diagram-loading-${index}" class="hidden text-center py-6">
+              <div class="loading mx-auto mb-4"></div>
+              <p class="text-purple-600">Generating your diagram...</p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      return card;
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function summarize(paperId, idx) {
+      const container = document.getElementById(`summaries-${idx}`);
+      container.classList.remove('hidden');
+      
+      // Show progress indicator
+      const progressDiv = document.getElementById(`progress-${idx}`);
+      const progressBar = document.getElementById(`progress-bar-${idx}`);
+      const progressText = document.getElementById(`progress-text-${idx}`);
+      const progressTime = document.getElementById(`progress-time-${idx}`);
+      
+      progressDiv.classList.remove('hidden');
+      progressBar.style.width = '0%';
+      progressText.textContent = '0/4 complete';
+      
+      // Start timer
+      const startTime = Date.now();
+      const updateTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        progressTime.textContent = `${elapsed}s`;
+      }, 1000);
+      
+      // Track completion status
+      const completedLevels = new Set();
+      let totalCompleted = 0;
+      
+      // Show loading states
+      const tabContents = container.querySelectorAll('.tab-content');
+      tabContents.forEach(tab => {
+        tab.innerHTML = '<div class="flex items-center gap-3"><div class="loading"></div><span>Waiting to start...</span></div>';
+      });
+
+      try {
+        // Use streaming endpoint for real-time updates
+        const eventSource = new EventSource(`/summarize-streaming/${encodeURIComponent(paperId)}`);
+        
+        eventSource.onmessage = function(event) {
+          const data = JSON.parse(event.data);
+          
+          if (data.level === 'error') {
+            // Handle error
+            tabContents.forEach(tab => {
+              tab.innerHTML = `<div class="text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>${data.summary}</div>`;
+            });
+            eventSource.close();
+            clearInterval(updateTimer);
+            progressDiv.classList.add('hidden');
+            return;
+          }
+          
+          const level = data.level;
+          const summary = data.summary;
+          const status = data.status;
+          
+          // Update the appropriate tab
+          const tabElement = document.getElementById(`tab-${level}-${idx}`);
+          if (tabElement) {
+            if (status === 'generating') {
+              tabElement.innerHTML = '<div class="flex items-center gap-3"><div class="loading"></div><span>Generating...</span></div>';
+            } else if (status === 'complete') {
+              tabElement.innerHTML = formatSummary(summary, getLevelDisplayName(level));
+              
+              // Update progress
+              if (!completedLevels.has(level)) {
+                completedLevels.add(level);
+                totalCompleted++;
+                const progressPercent = (totalCompleted / 4) * 100;
+                progressBar.style.width = `${progressPercent}%`;
+                progressText.textContent = `${totalCompleted}/4 complete`;
+                
+                // Show success notification for first completed summary
+                if (level === 'scratch') {
+                  showNotification('First summary ready! More coming...', 'success');
+                }
+              }
+            } else if (status === 'error') {
+              tabElement.innerHTML = `<div class="text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>${summary}</div>`;
+            }
+          }
+          
+          // Close connection when all summaries are complete
+          if (status === 'complete' && level === 'high') {
+            eventSource.close();
+            clearInterval(updateTimer);
+            progressDiv.classList.add('hidden');
+            
+            // Show completion notification
+            const totalTime = Math.floor((Date.now() - startTime) / 1000);
+            showNotification(`All summaries completed in ${totalTime}s!`, 'success');
+            
+            // Show first tab by default
+            showTab(idx, 'scratch');
+          }
+        };
+        
+        eventSource.onerror = function(event) {
+          console.error('EventSource failed:', event);
+          eventSource.close();
+          clearInterval(updateTimer);
+          progressDiv.classList.add('hidden');
+          
+          // Fallback to non-streaming endpoint
+          console.log('Falling back to non-streaming endpoint...');
+          fallbackSummarize(paperId, idx);
+        };
+        
+      } catch (error) {
+        console.error('Streaming failed, falling back:', error);
+        clearInterval(updateTimer);
+        progressDiv.classList.add('hidden');
+        fallbackSummarize(paperId, idx);
+      }
+    }
+
+    // Fallback function for non-streaming summarization
+    async function fallbackSummarize(paperId, idx) {
+      try {
+        const res = await fetch(`/summarize/${encodeURIComponent(paperId)}`);
+        const data = await res.json();
+        
+        if (data.error) {
+          const tabContents = document.querySelectorAll(`#summaries-${idx} .tab-content`);
+          tabContents.forEach(tab => {
+            tab.innerHTML = `<div class="text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>${data.error}</div>`;
+          });
+          return;
+        }
+
+        const summaries = data.summaries || data;
+        
+        // Update content
+        document.getElementById(`tab-scratch-${idx}`).innerHTML = formatSummary(summaries.scratch || summaries['scratch'] || 'N/A', 'High School Level');
+        document.getElementById(`tab-undergrad-${idx}`).innerHTML = formatSummary(summaries.undergrad || 'N/A', 'Undergraduate Level');
+        document.getElementById(`tab-masters-${idx}`).innerHTML = formatSummary(summaries.masters || 'N/A', 'Master\'s Level');
+        document.getElementById(`tab-high-${idx}`).innerHTML = formatSummary(summaries.high || 'N/A', 'Expert Level');
+
+        // Show first tab by default
+        showTab(idx, 'scratch');
+        
+        showNotification('AI summaries generated successfully!', 'success');
+        
+      } catch (error) {
+        const tabContents = document.querySelectorAll(`#summaries-${idx} .tab-content`);
+        tabContents.forEach(tab => {
+          tab.innerHTML = `<div class="text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>Failed to generate summary</div>`;
+        });
+        showNotification('Failed to generate summaries', 'error');
+      }
+    }
+
+    function formatSummary(content, level) {
+      return `
+        <div class="mb-2">
+          <span class="inline-block px-2 py-1 text-xs font-semibold bg-white rounded-full text-gray-700">${level}</span>
+        </div>
+        <div class="text-gray-700 leading-relaxed">${content}</div>
+      `;
+    }
+
+    function showTab(idx, name) {
+      // Update tab buttons
+      const tabBtns = document.querySelectorAll(`#summaries-${idx} .tab-btn`);
+      tabBtns.forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-gray-200');
+      });
+      
+      const activeBtn = document.querySelector(`#summaries-${idx} .tab-btn[data-tab="${name}"]`);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-gray-200');
+        activeBtn.classList.add('bg-blue-600', 'text-white');
+      }
+
+      // Show/hide tab content
+      ['scratch','undergrad','masters','high'].forEach(n => {
+        const el = document.getElementById(`tab-${n}-${idx}`);
+        if (el) el.classList.toggle('active', n === name);
+      });
+    }
+
+    function toggleChat(idx) {
+      const card = document.getElementById(`chat-card-${idx}`);
+      if (card) {
+        card.classList.toggle('hidden');
+        
+        // Add welcome message if chat is empty
+        const chatBox = document.getElementById(`chat-box-${idx}`);
+        if (chatBox.children.length === 0) {
+          const welcomeDiv = document.createElement('div');
+          welcomeDiv.className = 'message bot';
+          welcomeDiv.innerHTML = `
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-robot text-white text-sm"></i>
+              </div>
+              <div>
+                <div class="font-semibold text-indigo-600 mb-1">AI Research Assistant</div>
+                <div>Hello! I'm here to help you understand this research paper. Ask me anything about the methodology, findings, or implications of this work.</div>
+              </div>
+            </div>
+          `;
+          chatBox.appendChild(welcomeDiv);
+        }
+      }
+    }
+
+    function toggleDiagram(idx) {
+      const card = document.getElementById(`diagram-card-${idx}`);
+      if (card) {
+        card.classList.toggle('hidden');
+        
+        // Load diagram types if not already loaded
+        const typesContainer = document.getElementById(`diagram-types-${idx}`);
+        if (typesContainer.children.length === 0) {
+          loadDiagramTypes(idx);
+        }
+      }
+    }
+
+    async function loadDiagramTypes(idx) {
+      try {
+        const response = await fetch('/diagram-types');
+        const data = await response.json();
+        
+        if (data.error) {
+          showNotification('Failed to load diagram types', 'error');
+          return;
+        }
+        
+        const typesContainer = document.getElementById(`diagram-types-${idx}`);
+        typesContainer.innerHTML = '';
+        
+        Object.entries(data.diagram_types).forEach(([type, info]) => {
+          const typeDiv = document.createElement('div');
+          typeDiv.className = 'diagram-type-option cursor-pointer p-3 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-all duration-200';
+          typeDiv.setAttribute('data-type', type);
+          typeDiv.innerHTML = `
+            <div class="text-center">
+              <div class="text-2xl mb-2">${info.icon}</div>
+              <div class="font-medium text-gray-800">${info.name}</div>
+              <div class="text-xs text-gray-600">${info.description}</div>
+            </div>
+          `;
+          
+          typeDiv.addEventListener('click', () => selectDiagramType(idx, type));
+          typesContainer.appendChild(typeDiv);
+        });
+        
+        // Enable generate button
+        document.getElementById(`generate-diagram-btn-${idx}`).disabled = false;
+        
+      } catch (error) {
+        console.error('Failed to load diagram types:', error);
+        showNotification('Failed to load diagram types', 'error');
+      }
+    }
+
+    function selectDiagramType(idx, type) {
+      // Update visual selection
+      const allOptions = document.querySelectorAll(`#diagram-types-${idx} .diagram-type-option`);
+      allOptions.forEach(option => {
+        option.classList.remove('border-purple-500', 'bg-purple-100');
+        option.classList.add('border-gray-200');
+      });
+      
+      const selectedOption = document.querySelector(`#diagram-types-${idx} .diagram-type-option[data-type="${type}"]`);
+      if (selectedOption) {
+        selectedOption.classList.remove('border-gray-200');
+        selectedOption.classList.add('border-purple-500', 'bg-purple-100');
+      }
+      
+      // Show/hide custom description input
+      const customDiv = document.getElementById(`custom-description-${idx}`);
+      if (type === 'custom') {
+        customDiv.classList.remove('hidden');
+      } else {
+        customDiv.classList.add('hidden');
+      }
+      
+      // Store selected type
+      window.selectedDiagramType = type;
+    }
+
+    async function generateDiagram(paperId, idx) {
+      const selectedType = window.selectedDiagramType;
+      if (!selectedType) {
+        showNotification('Please select a diagram type first', 'warning');
+        return;
+      }
+      
+      let customDescription = '';
+      if (selectedType === 'custom') {
+        customDescription = document.getElementById(`custom-input-${idx}`).value.trim();
+        if (!customDescription) {
+          showNotification('Please provide a custom description', 'warning');
+          return;
+        }
+      }
+      
+      // Show loading state
+      const loadingDiv = document.getElementById(`diagram-loading-${idx}`);
+      const resultDiv = document.getElementById(`diagram-result-${idx}`);
+      const generateBtn = document.getElementById(`generate-diagram-btn-${idx}`);
+      
+      loadingDiv.classList.remove('hidden');
+      resultDiv.classList.add('hidden');
+      generateBtn.disabled = true;
+      
+      try {
+        const response = await fetch(`/generate-diagram/${encodeURIComponent(paperId)}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            diagram_type: selectedType,
+            custom_description: customDescription
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          showNotification(data.error, 'error');
+          return;
+        }
+        
+        // Display result
+        const contentDiv = document.getElementById(`diagram-content-${idx}`);
+        const metadataDiv = document.getElementById(`diagram-metadata-${idx}`);
+        
+        if (data.image_data) {
+          // Display the generated image
+          contentDiv.innerHTML = `
+            <div class="prose max-w-none">
+              <h6 class="text-lg font-semibold mb-3">${DIAGRAM_TYPES[selectedType]?.name || 'Custom'} Diagram</h6>
+              <div class="bg-white p-4 rounded border text-center">
+                <img src="${data.image_data}" alt="Generated Diagram" class="max-w-full h-auto rounded shadow-lg" />
+                ${data.caption ? `<p class="mt-3 text-sm text-gray-600 italic">"${data.caption}"</p>` : ''}
+              </div>
+            </div>
+          `;
+          
+          metadataDiv.innerHTML = `
+            <div class="text-xs">
+              <strong>Type:</strong> ${data.diagram_type}<br>
+              <strong>Model:</strong> ${data.model}<br>
+              <strong>Device:</strong> ${data.device}<br>
+              <strong>Dimensions:</strong> ${data.dimensions}<br>
+              <strong>Generated:</strong> ${new Date().toLocaleString()}
+            </div>
+          `;
+          
+          resultDiv.classList.remove('hidden');
+          showNotification('Diagram generated successfully!', 'success');
+        } else if (data.diagram_description) {
+          // Fallback for text-based diagrams
+          contentDiv.innerHTML = `
+            <div class="prose max-w-none">
+              <h6 class="text-lg font-semibold mb-3">${DIAGRAM_TYPES[selectedType]?.name || 'Custom'} Diagram</h6>
+              <div class="bg-white p-4 rounded border">
+                ${data.diagram_description.replace(/\n/g, '<br>')}
+              </div>
+            </div>
+          `;
+          
+          metadataDiv.innerHTML = `
+            <div class="text-xs">
+              <strong>Type:</strong> ${data.diagram_type}<br>
+              <strong>Model:</strong> ${data.model}<br>
+              <strong>Generated:</strong> ${new Date().toLocaleString()}
+            </div>
+          `;
+          
+          resultDiv.classList.remove('hidden');
+          showNotification('Diagram generated successfully!', 'success');
+        }
+        
+      } catch (error) {
+        console.error('Diagram generation failed:', error);
+        showNotification('Failed to generate diagram', 'error');
+      } finally {
+        // Hide loading state
+        loadingDiv.classList.add('hidden');
+        generateBtn.disabled = false;
+      }
+    }
+
+    async function sendChat(paperId, idx) {
+      const input = document.getElementById(`chat-input-${idx}`);
+      const query = input.value.trim();
+      if (!query) return;
+
+      const chatBox = document.getElementById(`chat-box-${idx}`);
+
+      // Add user message
+      const userDiv = document.createElement('div');
+      userDiv.className = 'message user';
+      userDiv.innerHTML = `
+        <div class="flex items-start gap-3 justify-end">
+          <div class="text-right">
+            <div class="font-semibold mb-1">You</div>
+            <div>${escapeHtml(query)}</div>
+          </div>
+          <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-user text-white text-sm"></i>
+          </div>
+        </div>
+      `;
+      chatBox.appendChild(userDiv);
+
+      // Add typing indicator
+      const typingDiv = document.createElement('div');
+      typingDiv.className = 'message bot';
+      typingDiv.innerHTML = `
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-robot text-white text-sm"></i>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="loading w-4 h-4"></div>
+            <span class="text-gray-500">AI is thinking...</span>
+          </div>
+        </div>
+      `;
+      chatBox.appendChild(typingDiv);
+
+      // Clear input
+      input.value = '';
+
+      try {
+        const res = await fetch(`/chat/${encodeURIComponent(paperId)}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ query: query })
+        });
+        
+        const data = await res.json();
+
+        // Remove typing indicator
+        chatBox.removeChild(typingDiv);
+
+        // Add bot response
+        const botDiv = document.createElement('div');
+        botDiv.className = 'message bot';
+        botDiv.innerHTML = `
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-robot text-white text-sm"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-indigo-600 mb-1">AI Research Assistant</div>
+              <div>${escapeHtml(data.answer || data.error || 'Sorry, I couldn\'t process your question. Please try again.')}</div>
+            </div>
+          </div>
+        `;
+        chatBox.appendChild(botDiv);
+
+        // Scroll to bottom
+        chatBox.scrollTop = chatBox.scrollHeight;
+        
+      } catch (error) {
+        // Remove typing indicator
+        chatBox.removeChild(typingDiv);
+        
+        // Add error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'message bot';
+        errorDiv.innerHTML = `
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-exclamation-triangle text-white text-sm"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-red-600 mb-1">Error</div>
+              <div>Sorry, I encountered an error. Please try again.</div>
+            </div>
+          </div>
+        `;
+        chatBox.appendChild(errorDiv);
+      }
+    }
+
+    function showNotification(message, type = 'info') {
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full`;
+      
+      const colors = {
+        success: 'bg-green-500 text-white',
+        error: 'bg-red-500 text-white',
+        info: 'bg-blue-500 text-white',
+        warning: 'bg-yellow-500 text-white'
+      };
+      
+      notification.className += ` ${colors[type]}`;
+      notification.innerHTML = `
+        <div class="flex items-center gap-2">
+          <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+          <span>${message}</span>
+        </div>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // Animate in
+      setTimeout(() => notification.classList.remove('translate-x-full'), 100);
+      
+      // Auto remove
+      setTimeout(() => {
+        notification.classList.add('translate-x-full');
+        setTimeout(() => document.body.removeChild(notification), 300);
+      }, 3000);
+    }
+
+    // Initialize with some example searches
+    document.addEventListener('DOMContentLoaded', function() {
+      // Add some helpful search suggestions
+      const suggestions = [
+        'machine learning applications',
+        'climate change research',
+        'quantum computing advances',
+        'renewable energy technology',
+        'artificial intelligence ethics'
+      ];
+      
+      const queryInput = document.getElementById('query');
+      queryInput.addEventListener('focus', function() {
+        if (!this.value) {
+          this.placeholder = suggestions[Math.floor(Math.random() * suggestions.length)];
+        }
+      });
+    });
+  </script>
+</body>
+</html>
