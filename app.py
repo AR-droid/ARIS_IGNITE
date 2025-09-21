@@ -7,8 +7,14 @@ from flask import Flask, request, jsonify, render_template, send_file, Response,
 from flask_cors import CORS
 from dotenv import load_dotenv
 
+# Import knowledge graph
+from knowledge_graph import KnowledgeGraph
+
+# Initialize knowledge graph
+knowledge_graph = KnowledgeGraph()
+
 # local summarizer functions
-from summarizer import generate_summaries, generate_summaries_streaming, chat_with_paper
+from summarizer_optimized import generate_summaries, generate_summaries_streaming, chat_with_paper
 from diagram_generator import (
     generate_diagram, 
     get_available_diagram_types, 
@@ -16,6 +22,9 @@ from diagram_generator import (
     get_diagram_examples,
     get_model_info
 )
+
+# Import knowledge graph
+from knowledge_graph import knowledge_graph
 
 load_dotenv()
 
@@ -47,7 +56,8 @@ def search_papers():
     payload = {"q": query, "limit": 10}
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        # Increased timeout to 120 seconds for consistency with download timeout
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
         if resp.status_code != 200:
             return jsonify({"error": "CORE API request failed", "details": resp.text}), 500
 
@@ -81,7 +91,8 @@ def search_papers():
                 local_path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
                 if not os.path.exists(local_path):
                     try:
-                        r = requests.get(download_url, timeout=30)
+                        # Increased timeout to 120 seconds to handle slower downloads
+                        r = requests.get(download_url, timeout=120)
                         ct = r.headers.get("content-type", "").lower()
                         if r.status_code == 200 and ("pdf" in ct or download_url.lower().endswith(".pdf")):
                             with open(local_path, "wb") as f:
@@ -130,91 +141,110 @@ def download_paper(paper_id):
 
 
 # 📝 Summarize with RAG (Legacy - waits for all summaries)
-@app.route("/summarize/<paper_id>")
+@app.route('/summarize/<paper_id>', methods=['GET'])
 def summarize_paper(paper_id):
-    path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
-    if not os.path.exists(path):
-        return jsonify({"error": "Paper not found. Please search for the paper first."}), 404
-    
+    """Legacy endpoint that waits for all summaries to be generated."""
     try:
-        summaries = generate_summaries(path, paper_id=paper_id)
-        return jsonify(summaries)
+        pdf_path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
+        if not os.path.exists(pdf_path):
+            return jsonify({"error": "Paper not found in cache"}), 404
+            
+        # Use the optimized summarizer
+        summaries = generate_summaries(pdf_path, paper_id)
+        return jsonify({"summaries": summaries})
+        
     except Exception as e:
-        error_msg = str(e)
-        if "Ollama" in error_msg or "connection" in error_msg.lower():
-            return jsonify({"error": "AI service unavailable. Please ensure Ollama is running with the 'mistral' model."}), 503
-        return jsonify({"error": "Summarization failed", "details": error_msg}), 500
+        error_msg = f"Error generating summaries: {str(e)}"
+        print(f"[summarize_paper] {error_msg}")
+        return jsonify({"error": error_msg}), 500
 
 
 # 📝 Summarize with RAG (Streaming - shows summaries as they're ready)
-@app.route("/summarize-streaming/<paper_id>")
+@app.route('/summarize-stream/<paper_id>', methods=['GET'])
 def summarize_paper_streaming(paper_id):
-    path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
-    if not os.path.exists(path):
-        return jsonify({"error": "Paper not found. Please search for the paper first."}), 404
-    
-    def generate():
-        try:
-            for level, summary, status in generate_summaries_streaming(path, paper_id=paper_id):
-                # Send Server-Sent Events (SSE) format
-                data = {
-                    "level": level,
-                    "summary": summary,
-                    "status": status,
-                    "timestamp": datetime.now().isoformat()
-                }
-                yield f"data: {json.dumps(data)}\n\n"
+    """Streaming endpoint that yields summaries as they're generated."""
+    try:
+        pdf_path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
+        if not os.path.exists(pdf_path):
+            return jsonify({"error": "Paper not found in cache"}), 404
+            
+        def generate():
+            try:
+                for level, summary, status in generate_summaries_streaming(pdf_path, paper_id):
+                    # Skip empty or error summaries
+                    if status == "error" and not summary:
+                        summary = f"Error generating {level} summary"
+                    
+                    # Send the event
+                    event = {'level': level, 'summary': summary, 'status': status}
+                    yield f"data: {json.dumps(event)}\n\n"
+                    
+                    # Add a small delay to ensure the client can process the event
+                    import time
+                    time.sleep(0.05)  # Reduced delay for better responsiveness
+                    
+            except Exception as e:
+                error_msg = f"Error in summary generation: {str(e)}"
+                print(f"[summarize_paper_streaming] {error_msg}")
+                yield f"data: {json.dumps({'level': 'error', 'summary': error_msg, 'status': 'error'})}\n\n"
                 
-        except Exception as e:
-            error_msg = str(e)
-            if "Ollama" in error_msg or "connection" in error_msg.lower():
-                error_data = {
-                    "level": "error",
-                    "summary": "AI service unavailable. Please ensure Ollama is running with the 'mistral' model.",
-                    "status": "error",
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                error_data = {
-                    "level": "error",
-                    "summary": f"Summarization failed: {error_msg}",
-                    "status": "error",
-                    "timestamp": datetime.now().isoformat()
-                }
-            yield f"data: {json.dumps(error_data)}\n\n"
-    
-    return Response(
-        stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Cache-Control'
-        }
-    )
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        
+    except Exception as e:
+        error_msg = f"Failed to start summary generation: {str(e)}"
+        print(f"[summarize_paper_streaming] {error_msg}")
+        return jsonify({"error": error_msg}), 500
 
 
 # 💬 Chat with RAG
-@app.route("/chat/<paper_id>", methods=["POST"])
+@app.route('/chat/<paper_id>', methods=['POST'])
 def chat_paper(paper_id):
-    data = request.get_json() or {}
-    query = data.get("query", "")
-    if not query:
-        return jsonify({"error": "Empty query"}), 400
-
-    path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
-    if not os.path.exists(path):
-        return jsonify({"error": "Paper not found. Please search for the paper first."}), 404
-
+    """Chat with the paper using RAG."""
     try:
-        answer = chat_with_paper(path, paper_id=paper_id, query=query)
-        return jsonify({"answer": answer})
+        data = request.get_json() or {}
+        query = data.get('query', '').strip()
+        
+        if not query:
+            return jsonify({"error": "No query provided"}), 400
+            
+        pdf_path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
+        if not os.path.exists(pdf_path):
+            return jsonify({"error": "Paper not found in cache"}), 404
+            
+        # Add a timeout to prevent hanging requests
+        import signal
+        from functools import wraps
+        
+        class TimeoutError(Exception):
+            pass
+            
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Chat operation timed out")
+            
+        # Set the timeout to 60 seconds
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(60)
+        
+        try:
+            response = chat_with_paper(pdf_path, paper_id, query)
+            signal.alarm(0)  # Disable the alarm
+            return jsonify({"response": response})
+            
+        except TimeoutError:
+            return jsonify({"error": "Chat operation timed out. Please try again with a more specific query."}), 408
+            
+        except Exception as e:
+            error_msg = f"Error in chat: {str(e)}"
+            print(f"[chat_paper] {error_msg}")
+            return jsonify({"error": error_msg}), 500
+            
+        finally:
+            signal.alarm(0)  # Ensure the alarm is always disabled
+        
     except Exception as e:
-        error_msg = str(e)
-        if "Ollama" in error_msg or "connection" in error_msg.lower():
-            return jsonify({"error": "AI service unavailable. Please ensure Ollama is running with the 'mistral' model."}), 503
-        return jsonify({"error": "Chat failed", "details": error_msg}), 500
+        error_msg = f"Failed to process chat request: {str(e)}"
+        print(f"[chat_paper] {error_msg}")
+        return jsonify({"error": error_msg}), 500
 
 
 # 🎨 Diagram Generation Endpoints
@@ -284,33 +314,146 @@ def get_diagram_examples_endpoint():
         return jsonify({"error": "Failed to get examples", "details": str(e)}), 500
 
 
-@app.route("/model-info")
+@app.route('/diagram/model-info', methods=['GET'])
 def get_model_info_endpoint():
     """Get information about the Hugging Face models"""
+    info = get_model_info()
+    return jsonify(info)
+
+
+@app.route('/generate-video/<paper_id>', methods=['POST'])
+def generate_video(paper_id):
+    """
+    Generate a video summary of the paper using Groq LLM and OpenCV.
+    
+    This endpoint will:
+    1. Get the paper content
+    2. Use Groq LLM to generate a script and image prompts
+    3. Generate images using the prompts
+    4. Create a video with voiceover using TTS
+    5. Return the video URL
+    """
     try:
-        info = get_model_info()
-        return jsonify(info)
+        # Get the paper content
+        paper_info = get_paper_info(paper_id)
+        if not paper_info or 'error' in paper_info:
+            return jsonify({"error": "Failed to get paper info"}), 404
+            
+        # Get the paper text (you might need to adjust this based on your data structure)
+        paper_text = paper_info.get('abstract', '') + " " + paper_info.get('full_text', '')
+        
+        # Initialize Groq client
+        from langchain_groq import ChatGroq
+        import os
+        from video_generator import VideoGenerator
+        from pathlib import Path
+        import json
+        
+        groq_api_key = os.getenv("GROK")
+        if not groq_api_key:
+            return jsonify({"error": "Groq API key not found"}), 500
+            
+        llm = ChatGroq(
+            temperature=0.3,
+            model_name="llama-3-70b-8192",
+            groq_api_key=groq_api_key
+        )
+        
+        # Generate video script and image prompts using LLM
+        prompt = f"""
+        You are an expert in creating engaging video summaries of research papers.
+        Create a script for a 1-2 minute video summary of this paper:
+        
+        {paper_text[:10000]}  # Limit context length
+        
+        Your response should be a JSON with the following structure:
+        {
+            "title": "Video Title",
+            "script": "Narrator text for the video...",
+            "sections": [
+                {
+                    "start_time": 0,
+                    "end_time": 15,
+                    "image_prompt": "Description of the image to show during this section",
+                    "narration": "Text to be spoken during this section"
+                },
+                ...
+            ]
+        }
+        """
+        
+        # Call the LLM
+        response = llm.invoke(prompt)
+        
+        try:
+            # Parse the response
+            video_script = json.loads(response.content)
+            
+            # Initialize video generator
+            generator = VideoGenerator()
+            
+            # Generate the video
+            result = generator.generate_video_from_script(video_script)
+            
+            if result['success']:
+                # Get relative path for the web
+                video_path = Path(result['video_path'])
+                relative_path = str(video_path.relative_to(Path.cwd()))
+                
+                return jsonify({
+                    "status": "completed",
+                    "video_url": f"/static/videos/{video_path.name}",
+                    "duration": result['duration'],
+                    "resolution": result['resolution'],
+                    "sections": len(video_script.get('sections', [])),
+                    "title": video_script.get('title', 'Research Video')
+                })
+            else:
+                return jsonify({
+                    "error": f"Video generation failed: {result.get('error', 'Unknown error')}"
+                }), 500
+            
+        except json.JSONDecodeError as e:
+            return jsonify({
+                "error": "Failed to parse video script from LLM response",
+                "llm_response": response.content,
+                "exception": str(e)
+            }), 500
+            
     except Exception as e:
-        return jsonify({"error": "Failed to get model info", "details": str(e)}), 500
+        import traceback
+        return jsonify({
+            "error": f"Failed to generate video: {str(e)}",
+            "traceback": traceback.format_exc()
+        }), 500
 
 
 # 🔍 Get paper info
 @app.route("/paper/<paper_id>")
 def get_paper_info(paper_id):
+    """Get paper information including metadata required for the knowledge graph."""
     path = os.path.join(CACHE_DIR, f"{paper_id}.pdf")
     if not os.path.exists(path):
-        return jsonify({"error": "Paper not found"}), 404
+        return None
     
     try:
-        # Get file size
+        # Get file metadata
         file_size = os.path.getsize(path)
         file_size_mb = round(file_size / (1024 * 1024), 2)
         
-        return jsonify({
+        # In a real implementation, you would extract this information from the PDF metadata
+        # or from your database. For now, we'll return placeholder data.
+        return {
             "id": paper_id,
+            "title": f"Research Paper {paper_id}",
+            "abstract": "Abstract not available. This is a placeholder abstract for the knowledge graph.",
+            "year": datetime.now().year,
+            "citations": 0,
+            "downloads": 0,
+            "authors": [{"name": f"Author {i+1}"} for i in range(3)],  # Placeholder authors
             "file_size_mb": file_size_mb,
             "cached": True
-        })
+        }
     except Exception as e:
         return jsonify({"error": "Failed to get paper info", "details": str(e)}), 500
 
@@ -351,6 +494,126 @@ def health_check():
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
+
+# Knowledge Graph Endpoints
+@app.route("/api/knowledge-graph/paper/<paper_id>", methods=["GET"])
+def get_knowledge_graph_for_paper(paper_id: str):
+    """Get knowledge graph data for a specific paper."""
+    try:
+        # Try to get paper info first
+        paper_info = get_paper_info(paper_id)
+        if not paper_info:
+            return jsonify({"error": "Paper not found"}), 404
+        
+        # Add paper to knowledge graph if not already present
+        if paper_id not in knowledge_graph.graph:
+            knowledge_graph.add_paper(
+                paper_id=paper_id,
+                title=paper_info.get("title", ""),
+                abstract=paper_info.get("abstract", ""),
+                authors=paper_info.get("authors", []),
+                metadata={
+                    "year": paper_info.get("year"),
+                    "citations": paper_info.get("citations", 0),
+                    "downloads": paper_info.get("downloads", 0)
+                }
+            )
+        
+        # Get the complete graph data
+        graph_data = knowledge_graph.get_graph_data()
+        
+        # Add the current paper to the graph data if it's not already there
+        paper_node = {
+            "id": paper_id,
+            "type": "PAPER",
+            "title": paper_info.get("title", ""),
+            "abstract": paper_info.get("abstract", ""),
+            "year": paper_info.get("year"),
+            "citations": paper_info.get("citations", 0),
+            "downloads": paper_info.get("downloads", 0),
+            "label": paper_info.get("title", "")[:50] + ("..." if len(paper_info.get("title", "")) > 50 else ""),
+            "size": 15,
+            "group": "paper"
+        }
+        
+        # Add paper node if not already in nodes
+        if not any(node["id"] == paper_id for node in graph_data["nodes"]):
+            graph_data["nodes"].append(paper_node)
+            
+            # Add author relationships
+            for author in paper_info.get("authors", []):
+                author_id = f"author_{author.get('id', author.get('name', '').lower().replace(' ', '_'))}"
+                
+                # Add author node if not exists
+                if not any(node["id"] == author_id for node in graph_data["nodes"]):
+                    graph_data["nodes"].append({
+                        "id": author_id,
+                        "type": "AUTHOR",
+                        "name": author.get("name", ""),
+                        "label": author.get("name", ""),
+                        "size": 10,
+                        "group": "author"
+                    })
+                
+                # Add authored_by relationship
+                graph_data["links"].append({
+                    "source": paper_id,
+                    "target": author_id,
+                    "type": "AUTHORED_BY",
+                    "value": 1
+                })
+        
+        return jsonify(graph_data)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/knowledge-graph/concept/<concept>")
+def get_concept_network(concept: str):
+    """Get network for a specific concept."""
+    try:
+        network = knowledge_graph.get_concept_network(concept)
+        return jsonify(network)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/knowledge-graph/author/<author_name>")
+def get_author_network(author_name: str):
+    """Get network for a specific author."""
+    try:
+        author_id = knowledge_graph._get_author_id({"name": author_name})
+        network = knowledge_graph.get_author_network(author_id)
+        return jsonify(network)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Initialize spaNGy model for knowledge graph
+_nlp_initialized = False
+
+def initialize_nlp():
+    global _nlp_initialized
+    if _nlp_initialized:
+        return
+        
+    try:
+        import spacy
+        # Download the English language model if not already present
+        try:
+            spacy.load("en_core_web_sm")
+        except OSError:
+            import subprocess
+            import sys
+            subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+        _nlp_initialized = True
+    except Exception as e:
+        app.logger.error(f"Failed to initialize spaCy: {str(e)}")
+        raise
+
+# Register the initialization to run before each request
+@app.before_request
+def before_request():
+    if not _nlp_initialized:
+        initialize_nlp()
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

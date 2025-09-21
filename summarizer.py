@@ -1,7 +1,12 @@
 import os
 import pickle
+import requests
 from typing import Dict, List, Generator, Tuple
 from PyPDF2 import PdfReader
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Updated LangChain imports to avoid deprecation warnings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -9,7 +14,7 @@ from langchain.docstore.document import Document
 from langchain.chains import RetrievalQA
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_ollama import OllamaLLM
+from langchain_groq import ChatGroq
 
 # directories for caching vectorstores
 VSTORE_DIR = "vstores"
@@ -117,30 +122,25 @@ def build_or_load_vectorstore(text: str, paper_id: str):
 
 def _get_llm():
     """
-    Return an Ollama LLM wrapper configured for local Ollama server (default).
-    Ensure Ollama service is running locally and model 'mistral' is available.
+    Return a Groq LLM wrapper configured with Llama 3 model.
+    Requires GROK environment variable to be set with the API key.
     """
     try:
-        # Use the newer OllamaLLM class
-        llm = OllamaLLM(
-            model="mistral",
-            temperature=0.1,  # Lower temperature for more focused responses
-            timeout=60,       # Reduced timeout for faster responses
-            stop=["Human:", "human:", "Question:", "question:"]  # Stop generation at these tokens
-        )
-        
-        # Test the connection with shorter timeout
-        try:
-            test_response = llm.invoke("Hi")  # Use invoke instead of __call__
-            if not test_response or len(str(test_response)) < 3:
-                raise Exception("LLM response too short - possible connection issue")
-        except Exception as e:
-            raise Exception(f"LLM connection test failed: {str(e)}")
+        groq_api_key = os.getenv("GROK")
+        if not groq_api_key:
+            raise ValueError("GROK API key not found in environment variables")
             
-        return llm
-        
+        return ChatGroq(
+            temperature=0.3,
+            model_name="llama-3.3-70b-versatile",
+            groq_api_key=groq_api_key,
+            max_tokens=1024,  # Reduced for faster response
+            timeout=30,       # Add timeout to prevent hanging
+            streaming=True    # Enable streaming for better UX
+        )
+            
     except Exception as e:
-        print(f"[_get_llm] error: {e}")
+        print(f"[_get_llm] Error initializing Groq LLM: {e}")
         raise Exception(f"Failed to initialize LLM: {str(e)}")
 
 
@@ -196,27 +196,44 @@ def generate_summaries_streaming(pdf_path: str, paper_id: str = None) -> Generat
             Keep it under 300 words."""
         }
 
-        for key, prompt in prompts.items():
+        for key, prompt_data in prompts.items():
             try:
                 # Signal that we're starting this summary
                 yield (key, "Generating...", "generating")
                 
                 print(f"[generate_summaries_streaming] generating {key} summary...")
+                
+                # Get the prompt text and set max tokens
+                prompt = prompt_data["prompt"]
+                max_tokens = prompt_data.get("max_tokens", 500)
+                
+                # Configure the LLM with appropriate settings for this summary
+                llm = _get_llm()
+                llm.max_tokens = max_tokens
+                
+                # Create a new QA chain with the configured LLM
+                qa = RetrievalQA.from_chain_type(
+                    llm=llm,
+                    chain_type="stuff",
+                    retriever=retriever,
+                    return_source_documents=False
+                )
+                
+                # Get the response
                 response = qa.invoke({"query": prompt})
                 
-                # Extract the response content
+                # Extract and clean the response
                 if isinstance(response, dict) and 'result' in response:
                     response_text = response['result']
                 else:
                     response_text = str(response)
                 
-                # Clean up the response
-                if response_text:
-                    cleaned_response = " ".join(response_text.split())
-                    yield (key, cleaned_response, "complete")
-                else:
-                    yield (key, f"Failed to generate {key} summary", "error")
-                    
+                response_text = response_text.strip()
+                if response_text.startswith('"') and response_text.endswith('"'):
+                    response_text = response_text[1:-1]
+                
+                yield (key, response_text, "complete")
+                
             except Exception as e:
                 error_msg = f"Error generating {key} summary: {str(e)}"
                 print(f"[generate_summaries_streaming] {error_msg}")

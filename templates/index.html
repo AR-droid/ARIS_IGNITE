@@ -322,6 +322,13 @@
             <i class="fas fa-chart-pie"></i>
             Generate Diagram
           </button>
+          <button 
+            onclick="showKnowledgeGraph('${paper.id}', ${index})" 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            <i class="fas fa-project-diagram"></i>
+            Knowledge Graph
+          </button>
         </div>
 
         <!-- Summaries Section -->
@@ -451,10 +458,75 @@
               </div>
             </div>
             
+            <!-- Video Generation Button -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+              <h4 class="text-lg font-semibold text-gray-800 mb-3">Video Generation</h4>
+              <p class="text-sm text-gray-600 mb-4">Create an engaging video summary with voiceover and visuals.</p>
+              
+              <div class="flex flex-col space-y-4">
+                <div class="flex items-center space-x-4">
+                  <button 
+                    onclick="generateVideo('${paper.id}', ${index})" 
+                    id="generate-video-btn-${index}"
+                    class="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <i class="fas fa-video"></i>
+                    Generate Video Summary
+                  </button>
+                  <div id="video-loading-${index}" class="hidden">
+                    <div class="flex items-center space-x-2 text-green-600">
+                      <div class="w-5 h-5 border-2 border-green-600 border-t-2 border-t-transparent rounded-full animate-spin"></div>
+                      <span>Generating video...</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Video Result -->
+                <div id="video-result-${index}" class="hidden">
+                  <div class="p-4 bg-green-50 rounded-lg border-l-4 border-green-400">
+                    <h5 class="font-semibold text-green-800 mb-2">Generated Video:</h5>
+                    <div id="video-content-${index}" class="text-gray-700"></div>
+                    <div id="video-metadata-${index}" class="mt-3 text-sm text-gray-600"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <!-- Loading State -->
             <div id="diagram-loading-${index}" class="hidden text-center py-6">
               <div class="loading mx-auto mb-4"></div>
               <p class="text-purple-600">Generating your diagram...</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Knowledge Graph Modal -->
+        <div id="knowledge-graph-modal-${index}" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
+             onclick="if(event.target === this) toggleKnowledgeGraph(${index});">
+          <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col" 
+               style="min-height: 70vh;"
+               onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center p-4 border-b">
+              <h3 class="text-lg font-semibold">Knowledge Graph</h3>
+              <button class="text-gray-500 hover:text-gray-700" onclick="toggleKnowledgeGraph(${index})">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+              <div id="knowledge-graph-container-${index}" class="w-full h-full bg-gray-50 rounded-lg">
+                <div class="flex items-center justify-center h-full">
+                  <div class="text-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-2"></div>
+                    <p class="text-gray-500">Click to generate knowledge graph</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="p-4 border-t flex justify-end">
+              <button class="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors" 
+                      onclick="toggleKnowledgeGraph(${index})">
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -750,6 +822,85 @@
       window.selectedDiagramType = type;
     }
 
+    async function generateVideo(paperId, idx) {
+      // Show loading state
+      const loadingDiv = document.getElementById(`video-loading-${idx}`);
+      const resultDiv = document.getElementById(`video-result-${idx}`);
+      const generateBtn = document.getElementById(`generate-video-btn-${idx}`);
+      
+      loadingDiv.classList.remove('hidden');
+      resultDiv.classList.add('hidden');
+      generateBtn.disabled = true;
+      
+      try {
+        const response = await fetch(`/generate-video/${encodeURIComponent(paperId)}`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          showNotification(data.error, 'error');
+          return;
+        }
+        
+        // Display result
+        const contentDiv = document.getElementById(`video-content-${idx}`);
+        const metadataDiv = document.getElementById(`video-metadata-${idx}`);
+        
+        if (data.video_url) {
+          // Display the generated video
+          contentDiv.innerHTML = `
+            <div class="bg-white p-4 rounded border text-center">
+              <video controls class="w-full max-w-2xl mx-auto rounded shadow-lg">
+                <source src="${data.video_url}" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+              ${data.caption ? `<p class="mt-3 text-sm text-gray-600 italic">${data.caption}</p>` : ''}
+            </div>
+          `;
+          
+          metadataDiv.innerHTML = `
+            <div class="text-xs">
+              <strong>Duration:</strong> ${data.duration || 'N/A'}<br>
+              <strong>Resolution:</strong> ${data.resolution || 'N/A'}<br>
+              <strong>Generated:</strong> ${new Date().toLocaleString()}
+            </div>
+          `;
+          
+          resultDiv.classList.remove('hidden');
+          showNotification('Video generated successfully!', 'success');
+          
+          // Scroll to the video
+          resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else if (data.message) {
+          // Show message if video is being processed
+          contentDiv.innerHTML = `
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <div class="flex">
+                <div class="flex-shrink-0">
+                  <i class="fas fa-info-circle text-yellow-400"></i>
+                </div>
+                <div class="ml-3">
+                  <p class="text-sm text-yellow-700">${data.message}</p>
+                </div>
+              </div>
+            </div>
+          `;
+          resultDiv.classList.remove('hidden');
+        }
+        
+      } catch (error) {
+        console.error('Video generation failed:', error);
+        showNotification('Failed to generate video: ' + error.message, 'error');
+      } finally {
+        // Hide loading state
+        loadingDiv.classList.add('hidden');
+        generateBtn.disabled = false;
+      }
+    }
+    
     async function generateDiagram(paperId, idx) {
       const selectedType = window.selectedDiagramType;
       if (!selectedType) {
@@ -980,6 +1131,267 @@
       }, 3000);
     }
 
+    // Knowledge Graph Functions
+    function showKnowledgeGraph(paperId, index) {
+      const modal = document.getElementById(`knowledge-graph-modal-${index}`);
+      modal.classList.remove('hidden');
+      
+      // Initialize graph container
+      const container = document.getElementById(`knowledge-graph-container-${index}`);
+      container.innerHTML = `
+        <div class="flex items-center justify-center h-full">
+          <div class="text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-2"></div>
+            <p class="text-gray-500">Generating knowledge graph...</p>
+          </div>
+        </div>
+      `;
+      
+      // Load knowledge graph data
+      fetch(`/api/knowledge-graph/paper/${paperId}`)
+        .then(response => response.json())
+        .then(data => {
+          // Render the knowledge graph
+          renderKnowledgeGraph(container, data, index);
+        })
+        .catch(error => {
+          console.error('Error loading knowledge graph:', error);
+          container.innerHTML = `
+            <div class="flex items-center justify-center h-full">
+              <div class="text-center text-red-500">
+                <i class="fas fa-exclamation-triangle text-4xl mb-2"></i>
+                <p>Failed to load knowledge graph. Please try again later.</p>
+              </div>
+            </div>
+          `;
+        });
+    }
+    
+    function toggleKnowledgeGraph(index) {
+      const modal = document.getElementById(`knowledge-graph-modal-${index}`);
+      modal.classList.toggle('hidden');
+    }
+    
+    function renderKnowledgeGraph(container, data, index) {
+      // Clear loading state
+      container.innerHTML = '';
+      
+      // Create SVG element
+      const width = container.clientWidth;
+      const height = 600;
+      
+      const svg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height])
+        .attr('style', 'max-width: 100%; height: auto;');
+      
+      // Add zoom behavior
+      const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+          g.attr('transform', event.transform);
+        });
+      
+      svg.call(zoom);
+      
+      // Create a group for the graph
+      const g = svg.append('g');
+      
+      // Process nodes and links
+      const nodes = [];
+      const links = [];
+      
+      // Add main paper node
+      if (data.paper) {
+        nodes.push({
+          id: data.paper.id,
+          name: data.paper.title || 'Untitled Paper',
+          type: 'paper',
+          year: data.paper.year,
+          citations: data.paper.citations
+        });
+      }
+      
+      // Add related papers
+      if (data.related_papers && data.related_papers.nodes) {
+        data.related_papers.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'paper'
+            });
+          }
+        });
+        
+        if (data.related_papers.links) {
+          links.push(...data.related_papers.links.map(link => ({
+            ...link,
+            type: 'cites'
+          })));
+        }
+      }
+      
+      // Add authors
+      if (data.author_network && data.author_network.nodes) {
+        data.author_network.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'author'
+            });
+          }
+        });
+        
+        if (data.author_network.links) {
+          links.push(...data.author_network.links.map(link => ({
+            ...link,
+            type: 'collaborated_with'
+          })));
+        }
+      }
+      
+      // Add concepts
+      if (data.concept_network && data.concept_network.nodes) {
+        data.concept_network.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'concept'
+            });
+          }
+        });
+        
+        if (data.concept_network.links) {
+          links.push(...data.concept_network.links.map(link => ({
+            ...link,
+            type: 'mentions'
+          })));
+        }
+      }
+      
+      // Create the force simulation
+      const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(40));
+      
+      // Create links
+      const link = g.append('g')
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.6)
+        .attr('stroke-width', 1.5);
+      
+      // Create node groups
+      const node = g.append('g')
+        .selectAll('g')
+        .data(nodes)
+        .join('g')
+        .call(drag(simulation));
+      
+      // Add circles to nodes
+      node.append('circle')
+        .attr('r', d => {
+          if (d.type === 'paper') return 10;
+          if (d.type === 'author') return 8;
+          return 6;
+        })
+        .attr('fill', d => {
+          switch(d.type) {
+            case 'paper': return '#3b82f6';
+            case 'author': return '#10b981';
+            case 'concept': return '#8b5cf6';
+            default: return '#9ca3af';
+          }
+        })
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1.5);
+      
+      // Add labels
+      const labels = node.append('text')
+        .text(d => d.name || d.id)
+        .attr('font-size', '10px')
+        .attr('dx', 12)
+        .attr('dy', 4);
+      
+      // Add tooltips
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'fixed bg-gray-900 text-white text-sm px-2 py-1 rounded pointer-events-none opacity-0')
+        .style('z-index', '1000');
+      
+      node.on('mouseover', (event, d) => {
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', 1);
+          
+        let tooltipHtml = `<div class="font-bold mb-1">${d.name || d.id}</div>`;
+        if (d.type === 'paper' && d.year) {
+          tooltipHtml += `<div>Year: ${d.year}</div>`;
+          if (d.citations) tooltipHtml += `<div>Citations: ${d.citations}</div>`;
+        }
+        if (d.type === 'author' && d.publications) {
+          tooltipHtml += `<div>Publications: ${d.publications}</div>`;
+        }
+        
+        tooltip
+          .html(tooltipHtml)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px');
+      });
+      
+      node.on('mousemove', (event) => {
+        tooltip
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px');
+      });
+      
+      node.on('mouseout', () => {
+        tooltip.transition()
+          .duration(500)
+          .style('opacity', 0);
+      });
+      
+      // Update positions on simulation tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+          
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
+      
+      // Drag functions
+      function drag(simulation) {
+        function dragstarted(event, d) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+          d.fx = event.x;
+          d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
+        
+        return d3.drag()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended);
+      }
+    }
+    
     // Initialize with some example searches
     document.addEventListener('DOMContentLoaded', function() {
       // Add some helpful search suggestions
@@ -999,5 +1411,38 @@
       });
     });
   </script>
+  <!-- Add D3.js for knowledge graph -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <!-- Add tooltip styles -->
+  <style>
+    .tooltip {
+      position: absolute;
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      border-radius: 0.25rem;
+      pointer-events: none;
+      font-size: 0.875rem;
+      max-width: 300px;
+      z-index: 1000;
+    }
+    
+    .tooltip div {
+      margin: 0.25rem 0;
+    }
+    
+    .tooltip .title {
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding-bottom: 0.25rem;
+    }
+    
+    .tooltip .meta {
+      color: #e5e7eb;
+      font-size: 0.75rem;
+    }
+  </style>
 </body>
 </html>

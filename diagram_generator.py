@@ -1,11 +1,19 @@
 import os
 import base64
 import io
-from typing import Dict, List, Optional
+import json
+from typing import Dict, List, Optional, Any
 from PIL import Image
 import torch
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 from transformers import pipeline
+from langchain_groq import ChatGroq
+from langchain.prompts import PromptTemplate
+from langchain.schema import HumanMessage, SystemMessage
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Available diagram types with their prompts
 DIAGRAM_TYPES = {
@@ -178,56 +186,164 @@ def get_available_diagram_types() -> Dict[str, Dict]:
     return DIAGRAM_TYPES
 
 def initialize_models():
-    """Initialize Hugging Face models for diagram generation"""
+    """Initialize Hugging Face models for diagram generation with proper device handling"""
     try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Determine the best available device
+        if torch.cuda.is_available():
+            device = "cuda"
+            torch_dtype = torch.float16
+            print("[diagram_generator] Using CUDA device")
+        elif torch.backends.mps.is_available():
+            device = "mps"
+            torch_dtype = torch.float32  # MPS doesn't fully support float16
+            print("[diagram_generator] Using MPS device (Apple Silicon)")
+        else:
+            device = "cpu"
+            torch_dtype = torch.float32
+            print("[diagram_generator] Using CPU")
+            
         print(f"[diagram_generator] Initializing models on {device}...")
         
         # Initialize text-to-image pipeline
         model_id = ACTIVE_CONFIG["text_to_image"]
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            safety_checker=None,
-            requires_safety_checker=False
-        )
+        print(f"[diagram_generator] Loading model: {model_id}")
         
-        # Optimize for speed
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        
-        if device == "cuda":
-            pipe = pipe.to("cuda")
-            pipe.enable_attention_slicing()
-            pipe.enable_vae_slicing()
+        try:
+            # Disable safety checker for better performance
+            pipe = StableDiffusionPipeline.from_pretrained(
+                model_id,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+                requires_safety_checker=False
+            )
+            
+            # Optimize for speed and memory
+            pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+            
+            # Move to appropriate device
+            pipe = pipe.to(device)
+            
+            # Enable optimizations
+            if device == "cuda":
+                pipe.enable_attention_slicing()
+                pipe.enable_vae_slicing()
+                
+            # For MPS, we might need to disable some optimizations
+            if device == "mps":
+                pipe.enable_attention_slicing()
+                
+            print(f"[diagram_generator] Model loaded successfully on {device}")
+            
+        except Exception as e:
+            print(f"[diagram_generator] Error loading model: {str(e)}")
+            # Fall back to CPU if there's an error with GPU/MPS
+            if device != "cpu":
+                print("[diagram_generator] Falling back to CPU...")
+                return initialize_models()  # Recursively try with CPU
+            raise
         
         # Initialize image captioning pipeline
-        caption_pipe = pipeline("image-to-text", model=ACTIVE_CONFIG["image_to_text"])
+        try:
+            caption_pipe = pipeline(
+                "image-to-text", 
+                model=ACTIVE_CONFIG["image_to_text"],
+                device=0 if device == "cuda" else -1  # Only use GPU if CUDA is available
+            )
+            print("[diagram_generator] Captioning model loaded successfully")
+        except Exception as e:
+            print(f"[diagram_generator] Error loading captioning model: {str(e)}")
+            # If captioning fails, we can still proceed without it
+            caption_pipe = None
         
-        print(f"[diagram_generator] Models initialized successfully")
+        print(f"[diagram_generator] Models initialized successfully on {device}")
         return pipe, caption_pipe
         
     except Exception as e:
         print(f"[diagram_generator] Model initialization failed: {e}")
         raise Exception(f"Failed to initialize models: {str(e)}")
 
-def generate_diagram_prompt(content: str, diagram_type: str, custom_description: str = None) -> tuple:
-    """Generate optimized prompts for diagram creation"""
+def _get_groq_client() -> ChatGroq:
+    """Initialize and return a Groq client"""
+    groq_api_key = os.getenv("GROK")
+    if not groq_api_key:
+        raise ValueError("GROK API key not found in environment variables")
     
+    return ChatGroq(
+        temperature=0.3,
+        model_name="llama-3.3-70b-versatile",
+        groq_api_key=groq_api_key,
+        max_tokens=1024
+    )
+
+def generate_diagram_prompt(content: str, diagram_type: str, custom_description: str = None) -> Dict[str, Any]:
+    """Generate optimized prompts for diagram creation using Groq's Llama model"""
     if diagram_type not in DIAGRAM_TYPES:
-        raise Exception(f"Unknown diagram type: {diagram_type}")
+        diagram_type = "custom"
     
-    # Get the base prompt template
-    base_prompt = DIAGRAM_TYPES[diagram_type]["prompt_template"]
-    negative_prompt = DIAGRAM_TYPES[diagram_type]["negative_prompt"]
+    if diagram_type == "custom" and not custom_description:
+        raise ValueError("Custom description is required for custom diagram type")
     
-    if diagram_type == "custom" and custom_description:
-        # Use custom description for custom diagrams
-        prompt = base_prompt.format(content=custom_description)
-    else:
-        # Use the content from the research paper
-        prompt = base_prompt.format(content=content)
+    diagram_info = DIAGRAM_TYPES.get(diagram_type, DIAGRAM_TYPES["flowchart"])
     
-    return prompt, negative_prompt
+    try:
+        groq_client = _get_groq_client()
+        
+        # Create a more detailed prompt for the LLM
+        system_prompt = """You are an expert in creating clear and effective visualization prompts for research content. 
+        Your task is to analyze the research content and generate a concise, detailed prompt that will guide the 
+        creation of a {diagram_type} diagram. Focus on the key relationships, processes, or concepts that should 
+        be visualized. Make sure the prompt is specific enough to generate a meaningful visualization."""
+        
+        user_prompt = f"""Research content to visualize:
+        {content[:2000]}  # Limit content length
+        
+        Please generate a detailed visualization prompt for a {diagram_type} diagram that would best represent 
+        this content. Focus on the most important elements and relationships."""
+        
+        # Get the enhanced prompt from Groq
+        response = groq_client.invoke([
+            SystemMessage(content=system_prompt.format(diagram_type=diagram_info['name'])),
+            HumanMessage(content=user_prompt)
+        ])
+        
+        enhanced_prompt = response.content.strip()
+        
+        # If using custom description, still enhance it with the LLM
+        if custom_description:
+            user_prompt = f"""Enhance this visualization description to be more detailed and effective:
+            {custom_description}
+            
+            Make it more specific and actionable for diagram generation, while preserving the original intent."""
+            
+            response = groq_client.invoke([
+                SystemMessage(content="You are a visualization expert that enhances diagram descriptions."),
+                HumanMessage(content=user_prompt)
+            ])
+            enhanced_prompt = response.content.strip()
+        
+        return {
+            "prompt": enhanced_prompt,
+            "negative_prompt": diagram_info["negative_prompt"],
+            "diagram_type": diagram_type,
+            "custom": diagram_type == "custom",
+            "enhanced": True
+        }
+        
+    except Exception as e:
+        print(f"[generate_diagram_prompt] Error using Groq API, falling back to template: {e}")
+        # Fallback to template if API call fails
+        if custom_description:
+            prompt = custom_description
+        else:
+            prompt = diagram_info["prompt_template"].format(content=content[:500])
+            
+        return {
+            "prompt": prompt,
+            "negative_prompt": diagram_info["negative_prompt"],
+            "diagram_type": diagram_type,
+            "custom": diagram_type == "custom",
+            "enhanced": False
+        }
 
 def generate_diagram(content: str, diagram_type: str, custom_description: str = None) -> Dict:
     """
@@ -246,32 +362,65 @@ def generate_diagram(content: str, diagram_type: str, custom_description: str = 
         # Initialize models (this will be cached after first call)
         pipe, caption_pipe = initialize_models()
         
-        # Generate the prompt
-        prompt, negative_prompt = generate_diagram_prompt(content, diagram_type, custom_description)
+        # Generate the prompt dictionary
+        prompt_data = generate_diagram_prompt(content, diagram_type, custom_description)
+        prompt = prompt_data["prompt"]
+        negative_prompt = prompt_data["negative_prompt"]
         
         print(f"[diagram_generator] Generating {diagram_type} diagram...")
         print(f"[diagram_generator] Prompt: {prompt[:100]}...")
+        print(f"[diagram_generator] Negative prompt: {negative_prompt[:100]}...")
         
-        # Generate the image
+        # Generate the image with optimized settings
         with torch.no_grad():
-            image = pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=20,  # Reduced for speed
-                guidance_scale=7.5,
-                width=512,
-                height=512,
-                num_images_per_prompt=1
-            ).images[0]
+            try:
+                # Get the device from the pipeline's unet
+                device = pipe.unet.device
+                print(f"[diagram_generator] Generating on device: {device}")
+                
+                # Create generator on the same device as the model
+                generator = torch.Generator(device=device)
+                
+                # Generate the image with optimized settings
+                result = pipe(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    num_inference_steps=15,  # Reduced for speed
+                    guidance_scale=7.0,     # Slightly lower for faster generation
+                    width=384,              # Smaller size for faster generation
+                    height=384,
+                    num_images_per_prompt=1,
+                    generator=generator
+                )
+                
+                # Extract the image from the result
+                if hasattr(result, 'images') and len(result.images) > 0:
+                    image = result.images[0]
+                else:
+                    raise ValueError("No images were generated")
+                    
+            except Exception as e:
+                print(f"[diagram_generator] Error during image generation: {str(e)}")
+                raise
         
         # Convert to base64 for web display
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         img_str = base64.b64encode(buffer.getvalue()).decode()
         
-        # Generate a caption for the image
-        caption = caption_pipe(image)[0]['generated_text']
-        
+        # Generate a caption for the image if caption_pipe is available
+        caption = ""
+        if caption_pipe is not None:
+            try:
+                caption_result = caption_pipe(image)
+                if isinstance(caption_result, list) and len(caption_result) > 0:
+                    caption = caption_result[0].get('generated_text', '')
+            except Exception as e:
+                print(f"[diagram_generator] Error generating caption: {str(e)}")
+                caption = f"{diagram_type} diagram"
+        else:
+            caption = f"{diagram_type} diagram"
+            
         print(f"[diagram_generator] Diagram generated successfully")
         
         return {
