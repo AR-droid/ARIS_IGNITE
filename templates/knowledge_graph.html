@@ -2,11 +2,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <style>
+        .hello-message {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 5px;
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            text-align: center;
+        }
+    </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Research Knowledge Graph</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        /* Graph Container */
+        #graph {
+            width: 100vw;
+            height: 100vh;
+            background-color: #f5f5f5;
+        }
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
         /* Graph Controls */
         .graph-controls {
             position: fixed;
@@ -196,8 +224,15 @@
     </style>
 </head>
 <body>
+    <div class="hello-message">Knowledge Graph Visualization</div>
     <div id="graph"></div>
     <div id="tooltip" class="tooltip" style="display: none;"></div>
+    
+    <!-- Debug Info -->
+    <div id="debug" style="position: fixed; bottom: 10px; left: 10px; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 5px; font-family: monospace; z-index: 1000; max-width: 400px; max-height: 200px; overflow: auto; border: 1px solid #ddd;">
+        <h4 style="margin: 0 0 10px 0; padding: 0;">Debug Info</h4>
+        <pre id="debug-content" style="margin: 0; font-size: 12px; white-space: pre-wrap;">Loading debug information...</pre>
+    </div>
     
     <!-- Zoom and Reset Controls -->
     <div class="graph-controls">
@@ -208,11 +243,49 @@
     </div>
 
     <script>
+        // Color scheme for different node types
+        const colorScheme = {
+            'PAPER': '#4285F4',
+            'AUTHOR': '#EA4335',
+            'CONCEPT': '#34A853',
+            'METHOD': '#FBBC05',
+            'default': '#9E9E9E'
+        };
+        
+        // D3.js version check
+        console.log('D3.js version:', d3.version);
+        
+        // Debug info function
+        function updateDebugInfo() {
+            const debugInfo = {
+                windowSize: { width: window.innerWidth, height: window.innerHeight },
+                svgSize: svg ? { width: +svg.attr('width'), height: +svg.attr('height') } : 'No SVG',
+                nodes: window.validNodes ? window.validNodes.length : 0,
+                links: window.validLinks ? window.validLinks.length : 0,
+                simulation: window.simulation ? 'Running' : 'Not running'
+            };
+            
+            // Update debug display
+            document.getElementById('debug-content').textContent = JSON.stringify(debugInfo, null, 2);
+            
+            // Log node positions if available
+            if (window.validNodes && window.validNodes.length > 0) {
+                console.log('Node positions:', window.validNodes.map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    x: n.x,
+                    y: n.y,
+                    size: n.size
+                })));
+            }
+        }
+        
+        // Initialize D3.js visualization
         const width = window.innerWidth;
         const height = window.innerHeight;
         let selectedNode = null;
-        let graphData = { nodes: [], links: [] };
-
+        
+        // Create SVG container
         const svg = d3.select('#graph')
             .append('svg')
             .attr('width', width)
@@ -221,26 +294,26 @@
                 .scaleExtent([0.1, 4])
                 .on('zoom', (event) => {
                     g.attr('transform', event.transform);
-                }))
-            .on('dblclick.zoom', null);
-
+                }));
+            
+        // Create a group for the graph elements
         const g = svg.append('g');
-        let link, node, nodeText;
+        
+        // Initialize graph data
+        let graphData = { nodes: [], links: [] };
+        
+        // Initialize D3 force simulation
+        let simulation = d3.forceSimulation()
+            .force('link', d3.forceLink().id(d => d.id).distance(100))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2));
+            
+        // Initialize tooltip
         const tooltip = d3.select('#tooltip');
-
-        // Color schemes for different entity types
-        const colorScheme = {
-            PAPER: '#4e79a7',
-            AUTHOR: '#e15759',
-            METHOD: '#59a14f',
-            DATASET: '#edc948',
-            METRIC: '#af7aa1',
-            CONCEPT: '#76b7b2',
-            INSTITUTION: '#ff9da7',
-            RESULT: '#9c755f',
-            default: '#bab0ac'
-        };
-
+        
+        // Initialize graph elements
+        let link, node, nodeText;
+        
         // Initialize the graph
         function initGraph() {
             // Add arrow markers for each relationship type
@@ -294,6 +367,7 @@
                 .attr('stop-color', '#f0f0f0')
                 .attr('stop-opacity', 0.8);
 
+            // Initialize graph elements
             link = g.append('g').selectAll('.link');
             node = g.append('g').selectAll('.node');
             nodeText = g.append('g').selectAll('.node-text');
@@ -317,21 +391,19 @@
                 
             legendItems.append('span')
                 .text(d => d[0]);
-
-            // Load data from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const paperId = urlParams.get('paperId');
-            if (paperId) loadPaperGraph(paperId);
         }
 
-        // Load paper graph data
+        // Load paper graph data with error handling
         async function loadPaperGraph(paperId) {
             try {
+            try {
+                console.log('Loading graph for paper:', paperId);
+                
                 // Show loading state
                 d3.select('#graph').html(`
                     <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
                         <div style="text-align: center;">
-                            <div class="spinner-border text-primary" role="status">
+                            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
                                 <span class="visually-hidden">Loading...</span>
                             </div>
                             <p class="mt-3">Building knowledge graph for paper ${paperId}...</p>
@@ -340,24 +412,61 @@
                 `);
 
                 // Fetch knowledge graph data for the paper
+                console.log('Fetching graph data from API...');
                 const response = await fetch(`/api/knowledge-graph/paper/${paperId}`);
                 
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || 'Failed to load knowledge graph');
+                    const errorText = await response.text();
+                    console.error('Error response from server:', errorText);
+                    let errorMessage = 'Failed to load knowledge graph';
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        errorMessage = errorData.error || errorMessage;
+                    } catch (e) {
+                        errorMessage = errorText || errorMessage;
+                    }
+                    throw new Error(errorMessage);
                 }
 
                 const graphData = await response.json();
+                console.log('Received graph data:', graphData);
                 
-                if (!graphData || !graphData.nodes || !graphData.links) {
-                    throw new Error('Invalid graph data received from server');
+                if (!graphData) {
+                    throw new Error('No data received from server');
                 }
-
+                
+                // Ensure we have valid nodes and links arrays
+                const nodes = Array.isArray(graphData.nodes) ? graphData.nodes : [];
+                const links = Array.isArray(graphData.links) ? graphData.links : [];
+                
+                console.log(`Processing ${nodes.length} nodes and ${links.length} links`);
+                
+                if (nodes.length === 0 && links.length === 0) {
+                    console.warn('Empty graph data received');
+                    d3.select('#graph').html(`
+                        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                            <div class="alert alert-warning">
+                                <h4>No Graph Data</h4>
+                                <p>No graph data available for this paper yet.</p>
+                                <button class="btn btn-primary mt-2" onclick="window.location.reload()">Try Again</button>
+                            </div>
+                        </div>
+                    `);
+                    return;
+                }
+                
+                // Log some sample data for debugging
+                console.log('Sample nodes:', nodes.slice(0, 3));
+                console.log('Sample links:', links.slice(0, 3));
+                
                 // Update the graph with the new data
+                console.log('Updating graph visualization...');
                 updateGraph({
-                    nodes: graphData.nodes,
-                    links: graphData.links
+                    nodes: nodes,
+                    links: links
                 });
+                
+                console.log(`Graph updated with ${nodes.length} nodes and ${links.length} links`);
 
             } catch (error) {
                 console.error('Error loading paper graph:', error);
@@ -373,6 +482,8 @@
 
         // Process graph data into nodes and links with proper types and relationships
         function processGraphData(data) {
+            // Make nodes and links available globally for debugging
+            window.rawGraphData = data;
             const nodes = [];
             const links = [];
             const nodeMap = new Map();
@@ -381,128 +492,141 @@
             // Helper to create a unique link key
             const linkKey = (source, target, type) => `${source}-${target}-${type}`;
 
-            // Add main paper node
-            const paperNode = { 
-                id: data.paper.id, 
-                type: 'PAPER', 
-                label: data.paper.title || 'Paper',
-                size: 100,  // Larger size for main paper
-                description: data.paper.abstract || '',
-                ...data.paper
-            };
-            nodes.push(paperNode);
-            nodeMap.set(paperNode.id, paperNode);
-
-            // Process authors
-            if (data.paper.authors) {
-                data.paper.authors.forEach(author => {
-                    const authorId = `author_${author.id || author.name.replace(/\s+/g, '_')}`;
-                    const authorNode = {
-                        id: authorId,
-                        type: 'AUTHOR',
-                        label: author.name,
-                        size: 60,
-                        ...author
-                    };
-                    nodes.push(authorNode);
-                    nodeMap.set(authorId, authorNode);
+            // Process nodes from the data
+            if (data.nodes) {
+                data.nodes.forEach(node => {
+                    const nodeId = node.id;
+                    const nodeType = (node.type || 'CONCEPT').toUpperCase();
                     
-                    // Connect author to paper
-                    links.push({
-                        source: paperNode.id,
-                        target: authorId,
-                        type: 'AUTHORED_BY',
-                        label: 'authored by'
-                    });
+                    // Set node size based on type or use provided size
+                    let nodeSize = node.size || 10;
+                    if (nodeType === 'PAPER') nodeSize = 20;
+                    else if (nodeType === 'AUTHOR') nodeSize = 16;
+                    else if (nodeType === 'KEYWORD') nodeSize = 12;
+                    
+                    // Create enhanced node object
+                    const enhancedNode = {
+                        id: nodeId,
+                        name: node.label || node.title || node.name || nodeId,
+                        type: nodeType,
+                        group: node.group || nodeType.toLowerCase(),
+                        size: nodeSize,
+                        color: node.color || getNodeColor(nodeType),
+                        ...node // Include all original properties
+                    };
+                    
+                    // Add type-specific properties
+                    if (nodeType === 'PAPER') {
+                        enhancedNode.year = node.year || new Date().getFullYear();
+                        enhancedNode.citations = node.citations || 0;
+                        enhancedNode.abstract = node.abstract || '';
+                    } else if (nodeType === 'AUTHOR') {
+                        enhancedNode.affiliation = node.affiliation || '';
+                    }
+                    
+                    nodes.push(enhancedNode);
+                    nodeMap.set(nodeId, enhancedNode);
                 });
             }
 
-            // Process related papers
-            if (data.related_papers) {
-                data.related_papers.forEach(paper => {
-                    const paperId = `paper_${paper.id || paper.title.replace(/\s+/g, '_')}`;
-                    const relatedPaperNode = {
-                        id: paperId,
-                        type: 'PAPER',
-                        label: paper.title || 'Related Paper',
-                        size: 80,
-                        description: paper.abstract || '',
-                        ...paper
-                    };
-                    nodes.push(relatedPaperNode);
-                    nodeMap.set(paperId, relatedPaperNode);
-                    
-                    // Connect related paper to main paper
-                    links.push({
-                        source: paperNode.id,
-                        target: paperId,
-                        type: 'RELATED_TO',
-                        label: 'related to',
-                        strength: paper.score || 0.5
-                    });
-                });
-            }
-
-            // Process concept network
+            // Process concept network if present
             if (data.concept_network?.nodes) {
                 data.concept_network.nodes.forEach(concept => {
                     const conceptId = `concept_${concept.id || concept.label.replace(/\s+/g, '_')}`;
-                    const conceptNode = {
-                        id: conceptId,
-                        type: 'CONCEPT',
-                        label: concept.label || 'Concept',
-                        size: 40 + (concept.weight || 1) * 10,  // Size based on weight
-                        ...concept
-                    };
-                    nodes.push(conceptNode);
-                    nodeMap.set(conceptId, conceptNode);
+                    const nodeType = 'CONCEPT';
                     
-                    // Connect concept to paper
-                    links.push({
-                        source: paperNode.id,
-                        target: conceptId,
-                        type: 'CONTAINS',
-                        label: 'contains',
-                        strength: 0.8
-                    });
+                    // Only add if not already in the node map
+                    if (!nodeMap.has(conceptId)) {
+                        const conceptNode = {
+                            id: conceptId,
+                            name: concept.label || concept.name || 'Concept',
+                            type: nodeType,
+                            group: 'concept',
+                            size: 12,
+                            color: getNodeColor(nodeType),
+                            ...concept
+                        };
+                        
+                        nodes.push(conceptNode);
+                        nodeMap.set(conceptId, conceptNode);
+                    }
                 });
-
-                // Add relationships between concepts
+                
+                // Add links from concept network
                 if (data.concept_network.links) {
                     data.concept_network.links.forEach(link => {
                         const sourceId = `concept_${link.source}`;
                         const targetId = `concept_${link.target}`;
-                        const key = linkKey(sourceId, targetId, link.type || 'RELATED_TO');
+                        const key = linkKey(sourceId, targetId, 'RELATED_TO');
                         
                         if (nodeMap.has(sourceId) && nodeMap.has(targetId) && !linkSet.has(key)) {
                             links.push({
                                 source: sourceId,
                                 target: targetId,
-                                type: link.type || 'RELATED_TO',
-                                label: link.label || 'related to',
-                                strength: link.strength || 0.5
+                                type: 'RELATED_TO',
+                                label: 'related to',
+                                strength: link.strength || 0.3,
+                                color: getLinkColor('RELATED_TO')
                             });
                             linkSet.add(key);
                         }
                     });
                 }
             }
-
-            // Add author network connections
-            if (data.author_network?.links) {
-                data.author_network.links.forEach(link => {
-                    const sourceId = `author_${link.source}`;
-                    const targetId = `author_${link.target}`;
-                    const key = linkKey(sourceId, targetId, 'COLLABORATES_WITH');
+            
+            // Process links with enhanced relationship handling
+            if (data.links) {
+                data.links.forEach(link => {
+                    const sourceId = link.source;
+                    const targetId = link.target;
+                    const linkType = (link.type || 'RELATED_TO').toUpperCase();
+                    const key = linkKey(sourceId, targetId, linkType);
                     
+                    // Only process if both nodes exist and we haven't seen this link before
                     if (nodeMap.has(sourceId) && nodeMap.has(targetId) && !linkSet.has(key)) {
+                        const sourceNode = nodeMap.get(sourceId);
+                        const targetNode = nodeMap.get(targetId);
+                        
+                        // Determine link label based on type
+                        const linkLabel = link.label || 
+                            (linkType === 'AUTHORED_BY' ? 'authored by' : 
+                             linkType === 'CITES' ? 'cites' :
+                             linkType === 'RELATES_TO' ? 'relates to' :
+                             linkType === 'CONTAINS_KEYWORD' ? 'contains' :
+                             linkType === 'RESEARCHES' ? 'researches' : 'related to');
+                        
+                        // Calculate link strength based on type or use provided
+                        let linkStrength = link.strength || 0.5;
+                        if (linkType === 'AUTHORED_BY') linkStrength = 0.9;
+                        else if (linkType === 'CITES') linkStrength = 0.8;
+                        
+                        // Add the link
                         links.push({
                             source: sourceId,
                             target: targetId,
-                            type: 'COLLABORATES_WITH',
-                            label: 'collaborates with',
-                            strength: link.strength || 0.3
+                            type: linkType,
+                            label: linkLabel,
+                            strength: linkStrength,
+                            color: link.color || getLinkColor(linkType),
+                            curve: linkType === 'AUTHORED_BY' ? 0.2 : 0,
+                            width: linkType === 'AUTHORED_BY' ? 2 : 1.5
                         });
+                        
+                        // Add reverse relationship for certain types
+                        if (linkType === 'AUTHORED_BY') {
+                            links.push({
+                                source: targetId,
+                                target: sourceId,
+                                type: 'AUTHOR_OF',
+                                label: 'author of',
+                                strength: 0.9,
+                                color: getLinkColor('AUTHOR_OF'),
+                                curve: -0.2,
+                                width: 2
+                            });
+                        }
+                        
+                        // Mark this link as processed
                         linkSet.add(key);
                     }
                 });
@@ -513,15 +637,55 @@
 
         // Update graph with new data and enhanced styling
         function updateGraph({ nodes, links }) {
+            console.log('Updating graph with:', { nodes, links });
+            
             // Clear previous simulation if exists
             if (window.simulation) {
                 window.simulation.stop();
                 window.simulation.nodes([]);
             }
 
+            // Ensure nodes have required properties and make available globally
+            window.validNodes = (nodes || []).map(node => ({
+                id: String(node.id || ''),
+                type: node.type || 'UNKNOWN',
+                label: node.label || node.title || node.name || String(node.id || '').substring(0, 20) + '...',
+                size: node.size || 10,
+                group: node.group || (node.type ? node.type.toLowerCase() : 'other'),
+                ...node
+            }));
+
+            // Ensure links have required properties and resolve node references
+            window.validLinks = (links || []).map(link => {
+                // Handle both object and ID references for source/target
+                const source = link.source?.id || link.source;
+                const target = link.target?.id || link.target;
+                
+                // Check if source and target nodes exist
+                const sourceExists = validNodes.some(n => n.id === source);
+                const targetExists = validNodes.some(n => n.id === target);
+                
+                if (!sourceExists || !targetExists) {
+                    console.warn('Skipping invalid link - missing node:', { source, target, sourceExists, targetExists });
+                    return null;
+                }
+                
+                return {
+                    source: source,
+                    target: target,
+                    type: link.type || 'RELATED_TO',
+                    value: link.value || link.strength || 1,
+                    strength: link.strength || 0.5,
+                    label: link.label || link.type || 'related to'
+                };
+            }).filter(Boolean); // Remove any null entries from invalid links
+
+            console.log(`Processing ${validNodes.length} nodes and ${validLinks.length} valid links`);
+
             // Create force simulation
-            window.simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links)
+            try {
+                window.simulation = d3.forceSimulation(validNodes)
+                .force('link', d3.forceLink(validLinks)
                     .id(d => d.id)
                     .distance(d => 150 / (d.strength || 1))  // Stronger connections = shorter distance
                     .strength(d => d.strength || 0.5)
@@ -547,62 +711,118 @@
 
             // Create link elements
             link = g.selectAll('.link')
-                .data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}-${d.type}`)
+                .data(validLinks, d => `${d.source.id || d.source}-${d.target.id || d.target}-${d.type}`)
                 .join('line')
                 .attr('class', 'link')
                 .attr('stroke', d => getLinkColor(d.type) || '#999')
                 .attr('stroke-width', d => (d.strength || 0.5) * 2)
                 .attr('marker-end', d => `url(#arrow-${d.type || 'default'})`);
 
-            // Create node groups
-            const nodeGroups = g.selectAll('.node')
-                .data(nodes, d => d.id)
-                .join('g')
-                .attr('class', 'node')
-                .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended)
-                )
-                .on('click', (event, d) => selectNode(d, event))
-                .on('mouseover', showTooltip)
-                .on('mousemove', updateTooltip)
-                .on('mouseout', hideTooltip);
+                // Process and update graph with error handling
+                try {
+                    const { nodes, links } = processGraphData(graphData);
+                    updateGraph({ nodes, links });
+                    
+                    // Add debug CSS
+                    d3.select('head').append('style')
+                        .text(`
+                            .node {
+                                border: 1px solid red;
+                            }
+                            .link {
+                                stroke-width: 2px;
+                            }
+                        `);
 
-            // Add circles to nodes
-            nodeGroups.append('circle')
-                .attr('r', d => d.size || 30)
-                .attr('fill', d => getNodeColor(d.type) || '#999')
-                .attr('stroke', '#fff')
-                .attr('stroke-width', 2);
+                    // Add debug HTML
+                    d3.select('body').append('div')
+                        .attr('id', 'debug-info')
+                        .html(`
+                            <h3>Debug Info</h3>
+                            <pre id="debug-data"></pre>
+                        `);
 
-            // Add node labels
-            nodeGroups.append('text')
-                .attr('dy', 4)
-                .attr('text-anchor', 'middle')
-                .text(d => {
-                    // Truncate long labels
-                    const maxLength = 15;
-                    return d.label.length > maxLength 
-                        ? d.label.substring(0, maxLength) + '...' 
-                        : d.label;
-                })
-                .attr('fill', '#fff')
-                .attr('font-size', d => Math.min(12, (d.size || 30) / 3));
+                    // Add debug JavaScript
+                    d3.select('#debug-info')
+                        .on('click', () => {
+                            const debugData = {
+                                nodes: nodes.map(n => ({ id: n.id, type: n.type })),
+                                links: links.map(l => ({ source: l.source, target: l.target, type: l.type }))
+                            };
+                            d3.select('#debug-data').text(JSON.stringify(debugData, null, 2));
+                        });
+                } catch (e) {
+                    console.error('Error updating graph:', e);
+                    d3.select('#graph').html(`
+                        <div style="padding: 20px; color: red;">
+                            <h3>Graph Update Error</h3>
+                            <pre>${e.toString()}</pre>
+                            <pre>${e.stack}</pre>
+                        </div>
+                    `);
+                }
 
-            // Add simulation tick function
+                // Process node groups
+                const nodeGroups = g.selectAll('.node')
+                    .data(validNodes, d => d.id)
+                    .join(enter => {
+                        const nodeGroup = enter.append('g')
+                            .attr('class', 'node')
+                            .call(d3.drag()
+                                .on('start', dragstarted)
+                                .on('drag', dragged)
+                                .on('end', dragended)
+                            )
+                            .on('click', (event, d) => selectNode(d, event))
+                            .on('mouseover', showTooltip)
+                            .on('mousemove', updateTooltip)
+                            .on('mouseout', hideTooltip);
+                    
+                    // Add circle for each node
+                    nodeGroup.append('circle')
+                        .attr('r', d => d.size || 10)
+                        .attr('fill', d => getNodeColor(d.type) || '#999')
+                        .attr('stroke', '#fff')
+                        .attr('stroke-width', 2);
+                    
+                    // Add text label
+                    nodeGroup.append('text')
+                        .attr('dy', 4)
+                        .attr('text-anchor', 'middle')
+                        .text(d => d.label || d.id)
+                        .attr('fill', '#fff')
+                        .attr('font-size', d => Math.max(10, Math.min(14, (d.size || 10) * 0.7)));
+                    
+                    return nodeGroup;
+                }, update => update, exit => exit.remove());
+            
+            console.log('Node groups created:', nodeGroups.size());
+
+            // Add simulation tick function with error handling
             window.simulation.on('tick', () => {
-                link
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x)
-                    .attr('y2', d => d.target.y);
+                try {
+                    // Update link positions
+                    link
+                        .attr('x1', d => d.source?.x || 0)
+                        .attr('y1', d => d.source?.y || 0)
+                        .attr('x2', d => d.target?.x || 0)
+                        .attr('y2', d => d.target?.y || 0);
 
-                nodeGroups
-                    .attr('transform', d => `translate(${d.x},${d.y})`);
+                    // Update node positions
+                    nodeGroups
+                        .attr('transform', d => {
+                            if (!d || typeof d.x !== 'number' || typeof d.y !== 'number') {
+                                console.warn('Invalid node position:', d);
+                                return 'translate(0,0)';
+                            }
+                            return `translate(${d.x},${d.y})`;
+                        });
+                } catch (error) {
+                    console.error('Error in simulation tick:', error);
+                }
             });
 
-            // Zoom to fit all nodes
+            // Set up zoom behavior
             const zoom = d3.zoom()
                 .scaleExtent([0.1, 4])
                 .on('zoom', (event) => {
@@ -611,30 +831,51 @@
 
             svg.call(zoom);
 
-            // Auto-fit the graph
-            setTimeout(() => {
-                const bounds = g.node().getBBox();
-                const parent = g.node().parentElement;
-                const fullWidth = parent.clientWidth;
-                const fullHeight = parent.clientHeight;
-                const width = bounds.width;
-                const height = bounds.height;
-                const midX = bounds.x + width / 2;
-                const midY = bounds.y + height / 2;
-
-                const scale = 0.9 / Math.max(width / fullWidth, height / fullHeight);
-                const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
-
+            // Function to zoom to fit all nodes
+            function zoomToFit() {
+                if (!validNodes.length) return;
+                
+                // Get bounds of all nodes
+                const padding = 50;
+                const xExtent = d3.extent(validNodes, d => d.x);
+                const yExtent = d3.extent(validNodes, d => d.y);
+                const nodeSizes = validNodes.map(d => d.size || 10);
+                
+                const minX = xExtent[0] - Math.max(...nodeSizes) - padding;
+                const maxX = xExtent[1] + Math.max(...nodeSizes) + padding;
+                const minY = yExtent[0] - Math.max(...nodeSizes) - padding;
+                const maxY = yExtent[1] + Math.max(...nodeSizes) + padding;
+                
+                const graphWidth = maxX - minX;
+                const graphHeight = maxY - minY;
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+                
+                // Calculate scale to fit
+                const scale = 0.9 / Math.max(
+                    graphWidth / width,
+                    graphHeight / height
+                );
+                
+                // Calculate translation
+                const translate = [
+                    (width / 2) - (scale * midX),
+                    (height / 2) - (scale * midY)
+                ];
+                
+                // Apply zoom transform
                 svg.transition()
-                    .duration(750)
+                    .duration(1000)
                     .call(
                         zoom.transform,
                         d3.zoomIdentity
                             .translate(translate[0], translate[1])
                             .scale(scale)
                     );
-            }, 100);
             }
+            
+            // Initial zoom to fit after a short delay to allow layout to stabilize
+            setTimeout(zoomToFit, 500);
 
             // Update links with enhanced styling
             link = link
@@ -904,6 +1145,37 @@
         // Initialize the graph
         initGraph();
         
+        // Get paperId from template variable
+        const paperId = '{{ paper_id }}';
+        
+        if (paperId) {
+            // Show loading state
+            d3.select('#graph').html(`
+                <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                    <div style="text-align: center;">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3">Loading knowledge graph for paper ${paperId}...</p>
+                    </div>
+                </div>
+            `);
+            
+            // Load the paper graph
+            loadPaperGraph(paperId);
+        } else {
+            // Show error if no paperId is provided
+            d3.select('#graph').html(`
+                <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                    <div class="alert alert-danger">
+                        <h4>Error</h4>
+                        <p>No paper ID provided. Please go back and try again.</p>
+                        <button class="btn btn-primary mt-2" onclick="window.history.back()">Go Back</button>
+                    </div>
+                </div>
+            `);
+        }
+        
         // Zoom and reset controls
         document.getElementById('zoom-in').addEventListener('click', () => {
             const currentTransform = d3.zoomTransform(svg.node());
@@ -928,11 +1200,74 @@
         });
         
         document.getElementById('reset-view').addEventListener('click', () => {
-            // Reset zoom and pan
-            svg.transition()
-                .duration(500)
-                .call(zoom.transform, d3.zoomIdentity);
+            svg.call(zoom);
+
+            // Function to zoom to fit all nodes
+            function zoomToFit() {
+                if (validNodes.length === 0) return;
                 
+                // Get bounds of all nodes
+                const padding = 100; // Padding around the nodes
+                const bounds = d3.extent(validNodes, d => d.x - (d.size || 10))
+                    .concat(d3.extent(validNodes, d => d.x + (d.size || 10)))
+                    .concat(d3.extent(validNodes, d => d.y - (d.size || 10)))
+                    .concat(d3.extent(validNodes, d => d.y + (d.size || 10)));
+                
+                const minX = bounds[0] - padding;
+                const maxX = bounds[1] + padding;
+                const minY = bounds[2] - padding;
+                const maxY = bounds[3] + padding;
+                
+                const graphWidth = maxX - minX;
+                const graphHeight = maxY - minY;
+                const scale = Math.min(8, 0.9 / Math.max(graphWidth / width, graphHeight / height));
+                
+                // Calculate center
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+                
+                // Apply zoom transform
+                const transform = d3.zoomIdentity
+                    .translate(width / 2, height / 2)
+                    .scale(scale)
+                    .translate(-midX, -midY);
+                
+                svg.transition()
+                    .duration(1000)
+                    .call(zoom.transform, transform);
+            }
+
+            // Initial zoom to fit with error handling
+            try {
+                setTimeout(() => {
+                    try {
+                        zoomToFit();
+                    } catch (e) {
+                        console.error('Error in zoomToFit:', e);
+                    }
+                }, 500);
+                
+                // Update debug info periodically
+                setInterval(updateDebugInfo, 1000);
+                updateDebugInfo();
+                
+            } catch (e) {
+                console.error('Error in initialization:', e);
+                d3.select('#graph').html(`
+                    <div style="padding: 20px; color: red;">
+                        <h3>Initialization Error</h3>
+                        <pre>${e.toString()}</pre>
+                        <pre>${e.stack}</pre>
+                    </div>
+                `);
+            }
+
+            // Reset zoom button
+            d3.select('#reset-zoom').on('click', () => {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity);
+            });    
             // Clear any selections
             if (window.selectedNode) {
                 node.select('circle').classed('selected', false);

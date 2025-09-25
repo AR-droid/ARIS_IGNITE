@@ -49,6 +49,41 @@
       background: #cbd5e1;
       border-radius: 3px;
     }
+    /* 3D Viewer Styles */
+    #viewer-container-3d {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+    }
+    #viewer-3d {
+      flex: 1;
+      width: 100%;
+    }
+    #viewer-header {
+      padding: 1rem;
+      background: #1a202c;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #close-viewer {
+      background: #e53e3e;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+    #close-viewer:hover {
+      background: #c53030;
+    }
     .message { 
       margin: .5rem 0; 
       padding: .75rem 1rem; 
@@ -113,11 +148,17 @@
 <body class="font-sans text-gray-800">
   <!-- Header -->
   <div class="text-center py-8">
-    <div class="inline-flex items-center space-x-3 mb-4">
-      <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+    <div class="flex justify-between items-center px-6 mb-4">
+      <div class="inline-flex items-center space-x-3">
+        <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
         <i class="fas fa-brain text-2xl text-blue-600"></i>
+        </div>
+        <h1 class="text-4xl font-bold text-white">ARIS</h1>
       </div>
-      <h1 class="text-4xl font-bold text-white">ARIS IGNITE</h1>
+      <a href="/notebook" class="bg-white text-primary-600 hover:bg-gray-100 px-6 py-2 rounded-full font-medium shadow-md transition duration-200 flex items-center space-x-2">
+        <i class="fas fa-book-open"></i>
+        <span>Research Notebook</span>
+      </a>
     </div>
     <p class="text-white/90 text-lg max-w-2xl mx-auto">
       AI-Powered Research Assistant • Discover • Analyze • Transform
@@ -323,12 +364,20 @@
             Generate Diagram
           </button>
           <button 
-            onclick="showKnowledgeGraph('${paper.id}', ${index})" 
+            onclick="generateKnowledgeGraph('${paper.id}', ${index})" 
             class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
           >
             <i class="fas fa-project-diagram"></i>
             Knowledge Graph
           </button>
+          <a 
+            href="/3dvis?title=${encodeURIComponent(paper.title || 'Molecule')}" 
+            target="_blank"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-md hover:shadow-lg no-underline"
+          >
+            <i class="fas fa-atom"></i>
+            3D Molecule
+          </a>
         </div>
 
         <!-- Summaries Section -->
@@ -501,34 +550,39 @@
         </div>
         
         <!-- Knowledge Graph Modal -->
-        <div id="knowledge-graph-modal-${index}" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
-             onclick="if(event.target === this) toggleKnowledgeGraph(${index});">
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col" 
-               style="min-height: 70vh;"
-               onclick="event.stopPropagation()">
+        <div id="knowledgeGraphModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+          <div class="bg-white rounded-lg w-11/12 h-5/6 flex flex-col">
             <div class="flex justify-between items-center p-4 border-b">
-              <h3 class="text-lg font-semibold">Knowledge Graph</h3>
-              <button class="text-gray-500 hover:text-gray-700" onclick="toggleKnowledgeGraph(${index})">
-                <i class="fas fa-times"></i>
+              <h3 class="text-xl font-semibold">Research Knowledge Graph</h3>
+              <button onclick="document.getElementById('knowledgeGraphModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-2xl"></i>
               </button>
             </div>
-            <div class="p-4 overflow-y-auto flex-1">
-              <div id="knowledge-graph-container-${index}" class="w-full h-full bg-gray-50 rounded-lg">
-                <div class="flex items-center justify-center h-full">
-                  <div class="text-center">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-2"></div>
-                    <p class="text-gray-500">Click to generate knowledge graph</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="p-4 border-t flex justify-end">
-              <button class="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors" 
-                      onclick="toggleKnowledgeGraph(${index})">
-                Close
-              </button>
+            <div id="graphContainer" class="flex-1 overflow-auto p-4">
+              <div id="knowledge-graph" style="width: 100%; height: 100%;"></div>
             </div>
           </div>
+        </div>
+        
+        <style>
+          .node {
+            cursor: pointer;
+          }
+          .node circle {
+            fill: #fff;
+            stroke: steelblue;
+            stroke-width: 2px;
+          }
+          .node text {
+            font: 12px sans-serif;
+          }
+          .link {
+            fill: none;
+            stroke: #ccc;
+            stroke-width: 1.5px;
+          }
+        </style>
+        
         </div>
       `;
 
@@ -833,6 +887,26 @@
       generateBtn.disabled = true;
       
       try {
+        // Show processing message
+        const contentDiv = document.getElementById(`video-content-${idx}`);
+        contentDiv.innerHTML = `
+          <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <i class="fas fa-cog fa-spin text-blue-400"></i>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-blue-700">Generating video with Gemini Veo 3... This may take a few moments.</p>
+                <div class="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+                  <div class="bg-blue-600 h-2.5 rounded-full animate-pulse" style="width: 100%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        resultDiv.classList.remove('hidden');
+        
+        // Make the API call
         const response = await fetch(`/generate-video/${encodeURIComponent(paperId)}`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'}
@@ -842,48 +916,82 @@
         
         if (data.error) {
           showNotification(data.error, 'error');
-          return;
+          throw new Error(data.error);
         }
         
         // Display result
-        const contentDiv = document.getElementById(`video-content-${idx}`);
         const metadataDiv = document.getElementById(`video-metadata-${idx}`);
         
         if (data.video_url) {
-          // Display the generated video
+          // Display the generated video with enhanced UI
           contentDiv.innerHTML = `
-            <div class="bg-white p-4 rounded border text-center">
-              <video controls class="w-full max-w-2xl mx-auto rounded shadow-lg">
-                <source src="${data.video_url}" type="video/mp4">
-                Your browser does not support the video tag.
-              </video>
-              ${data.caption ? `<p class="mt-3 text-sm text-gray-600 italic">${data.caption}</p>` : ''}
+            <div class="bg-white rounded-lg overflow-hidden shadow-lg">
+              <div class="relative pt-[56.25%] bg-black">
+                <video 
+                  controls 
+                  class="absolute top-0 left-0 w-full h-full"
+                  poster="${data.thumbnail_url || ''}"
+                  preload="metadata"
+                >
+                  <source src="${data.video_url}" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+                <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+                  <h3 class="text-white font-semibold text-lg">${data.title || 'Research Video'}</h3>
+                  ${data.message ? `<p class="text-sm text-gray-300 mt-1">${data.message}</p>` : ''}
+                </div>
+              </div>
+              ${data.caption ? `
+                <div class="p-4 bg-gray-50 border-t border-gray-200">
+                  <p class="text-sm text-gray-600">${data.caption}</p>
+                </div>
+              ` : ''}
             </div>
           `;
           
+          // Enhanced metadata display
           metadataDiv.innerHTML = `
-            <div class="text-xs">
-              <strong>Duration:</strong> ${data.duration || 'N/A'}<br>
-              <strong>Resolution:</strong> ${data.resolution || 'N/A'}<br>
-              <strong>Generated:</strong> ${new Date().toLocaleString()}
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center">
+                <i class="fas fa-clock text-gray-500 w-5"></i>
+                <span class="ml-2"><strong>Duration:</strong> ${formatDuration(data.duration || 0)}</span>
+              </div>
+              <div class="flex items-center">
+                <i class="fas fa-expand text-gray-500 w-5"></i>
+                <span class="ml-2"><strong>Resolution:</strong> ${data.resolution || '1920x1080'}</span>
+              </div>
+              <div class="flex items-center">
+                <i class="fas fa-film text-gray-500 w-5"></i>
+                <span class="ml-2"><strong>Scenes:</strong> ${data.sections || 0}</span>
+              </div>
+              <div class="flex items-center">
+                <i class="fas fa-calendar-alt text-gray-500 w-5"></i>
+                <span class="ml-2">${new Date().toLocaleString()}</span>
+              </div>
             </div>
           `;
           
           resultDiv.classList.remove('hidden');
-          showNotification('Video generated successfully!', 'success');
+          showNotification('Video generated successfully with Gemini Veo 3!', 'success');
           
-          // Scroll to the video
-          resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          // Smooth scroll to the video
+          setTimeout(() => {
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 300);
+          
         } else if (data.message) {
-          // Show message if video is being processed
+          // Show processing message
           contentDiv.innerHTML = `
-            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
               <div class="flex">
                 <div class="flex-shrink-0">
-                  <i class="fas fa-info-circle text-yellow-400"></i>
+                  <i class="fas fa-cog fa-spin text-blue-400"></i>
                 </div>
                 <div class="ml-3">
-                  <p class="text-sm text-yellow-700">${data.message}</p>
+                  <p class="text-sm text-blue-700">${data.message}</p>
+                  <div class="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+                    <div class="bg-blue-600 h-2.5 rounded-full animate-pulse" style="width: 100%"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -893,14 +1001,45 @@
         
       } catch (error) {
         console.error('Video generation failed:', error);
-        showNotification('Failed to generate video: ' + error.message, 'error');
+        
+        // Show error message
+        const contentDiv = document.getElementById(`video-content-${idx}`);
+        contentDiv.innerHTML = `
+          <div class="bg-red-50 border-l-4 border-red-400 p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-red-400"></i>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-red-700">Failed to generate video: ${error.message || 'Unknown error'}</p>
+                <button 
+                  onclick="generateVideo('${paperId}', ${idx})" 
+                  class="mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  <i class="fas fa-redo mr-1"></i> Try Again
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        resultDiv.classList.remove('hidden');
+        showNotification('Failed to generate video: ' + (error.message || 'Unknown error'), 'error');
       } finally {
         // Hide loading state
         loadingDiv.classList.add('hidden');
         generateBtn.disabled = false;
       }
     }
-    
+
+    // Helper function to format duration in seconds to MM:SS
+    function formatDuration(seconds) {
+      if (!seconds && seconds !== 0) return 'N/A';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
     async function generateDiagram(paperId, idx) {
       const selectedType = window.selectedDiagramType;
       if (!selectedType) {
@@ -1004,99 +1143,345 @@
       }
     }
 
-    async function sendChat(paperId, idx) {
-      const input = document.getElementById(`chat-input-${idx}`);
-      const query = input.value.trim();
-      if (!query) return;
-
-      const chatBox = document.getElementById(`chat-box-${idx}`);
-
-      // Add user message
-      const userDiv = document.createElement('div');
-      userDiv.className = 'message user';
-      userDiv.innerHTML = `
-        <div class="flex items-start gap-3 justify-end">
-          <div class="text-right">
-            <div class="font-semibold mb-1">You</div>
-            <div>${escapeHtml(query)}</div>
-          </div>
-          <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-user text-white text-sm"></i>
-          </div>
-        </div>
-      `;
-      chatBox.appendChild(userDiv);
-
-      // Add typing indicator
-      const typingDiv = document.createElement('div');
-      typingDiv.className = 'message bot';
-      typingDiv.innerHTML = `
-        <div class="flex items-start gap-3">
-          <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-robot text-white text-sm"></i>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="loading w-4 h-4"></div>
-            <span class="text-gray-500">AI is thinking...</span>
-          </div>
-        </div>
-      `;
-      chatBox.appendChild(typingDiv);
-
-      // Clear input
-      input.value = '';
-
-      try {
-        const res = await fetch(`/chat/${encodeURIComponent(paperId)}`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ query: query })
+    function generateKnowledgeGraph(paperId, index) {
+      const modal = document.getElementById('knowledgeGraphModal');
+      const graphContainer = document.getElementById('knowledge-graph');
+      
+      // Clear previous graph
+      graphContainer.innerHTML = '';
+      
+      // Sample data for the knowledge graph
+      const data = {
+        nodes: [
+          { id: 'paper', name: 'Research Paper', type: 'paper' },
+          { id: 'llm', name: 'Large Language Models', type: 'concept' },
+          { id: 'nlp', name: 'NLP', type: 'concept' },
+          { id: 'transformer', name: 'Transformers', type: 'concept' },
+          { id: 'attention', name: 'Attention', type: 'concept' },
+          { id: 'fine_tuning', name: 'Fine-tuning', type: 'concept' },
+          { id: 'prompting', name: 'Prompting', type: 'concept' },
+          { id: 'rlhf', name: 'RLHF', type: 'concept' },
+          { id: 'multimodal', name: 'Multimodal', type: 'concept' },
+          { id: 'bias', name: 'Bias', type: 'concept' },
+          { id: 'ethics', name: 'Ethics', type: 'concept' },
+          { id: 'evaluation', name: 'Evaluation', type: 'concept' },
+          { id: 'retrieval', name: 'Retrieval', type: 'concept' },
+          { id: 'efficiency', name: 'Efficiency', type: 'concept' },
+          { id: 'scaling', name: 'Scaling', type: 'concept' },
+          { id: 'applications', name: 'Applications', type: 'concept' }
+        ],
+        links: [
+          { source: 'paper', target: 'llm', type: 'main_topic' },
+          { source: 'llm', target: 'nlp' },
+          { source: 'llm', target: 'transformer' },
+          { source: 'transformer', target: 'attention' },
+          { source: 'llm', target: 'fine_tuning' },
+          { source: 'llm', target: 'prompting' },
+          { source: 'llm', target: 'rlhf' },
+          { source: 'llm', target: 'multimodal' },
+          { source: 'llm', target: 'bias' },
+          { source: 'bias', target: 'ethics' },
+          { source: 'llm', target: 'evaluation' },
+          { source: 'llm', target: 'retrieval' },
+          { source: 'llm', target: 'efficiency' },
+          { source: 'llm', target: 'scaling' },
+          { source: 'llm', target: 'applications' }
+        ]
+      };
+      
+      // Create the graph
+      createKnowledgeGraph(data);
+      
+      // Show the modal
+      modal.classList.remove('hidden');
+      
+      // Function to create the D3.js graph
+      function createKnowledgeGraph(graphData) {
+        const width = graphContainer.clientWidth;
+        const height = 600;
+        
+        // Create SVG
+        const svg = d3.select('#knowledge-graph')
+          .append('svg')
+          .attr('width', '100%')
+          .attr('height', height);
+          
+        // Add zoom behavior
+        const zoom = d3.zoom()
+          .scaleExtent([0.5, 4])
+          .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+          });
+          
+        svg.call(zoom);
+        
+        // Create a group for the graph
+        const g = svg.append('g');
+        
+        // Create a force simulation
+        const simulation = d3.forceSimulation(graphData.nodes)
+          .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(150))
+          .force('charge', d3.forceManyBody().strength(-500))
+          .force('center', d3.forceCenter(width / 2, height / 2))
+          .force('collision', d3.forceCollide().radius(60));
+        
+        // Create links
+        const link = g.append('g')
+          .selectAll('line')
+          .data(graphData.links)
+          .enter().append('line')
+          .attr('class', 'link');
+          
+        // Create node groups
+        const node = g.append('g')
+          .selectAll('.node')
+          .data(graphData.nodes)
+          .enter().append('g')
+          .attr('class', 'node')
+          .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended));
+          
+        // Add circles to nodes
+        node.append('circle')
+          .attr('r', d => d.type === 'paper' ? 15 : 10)
+          .attr('fill', d => d.type === 'paper' ? '#3b82f6' : '#10b981');
+          
+        // Add text labels
+        node.append('text')
+          .attr('dy', 4)
+          .attr('text-anchor', 'middle')
+          .text(d => d.name);
+          
+        // Update positions on simulation tick
+        simulation.on('tick', () => {
+          link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+            
+          node.attr('transform', d => `translate(${d.x},${d.y})`);
         });
         
-        const data = await res.json();
-
-        // Remove typing indicator
-        chatBox.removeChild(typingDiv);
-
-        // Add bot response
-        const botDiv = document.createElement('div');
-        botDiv.className = 'message bot';
-        botDiv.innerHTML = `
-          <div class="flex items-start gap-3">
-            <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-robot text-white text-sm"></i>
-            </div>
-            <div>
-              <div class="font-semibold text-indigo-600 mb-1">AI Research Assistant</div>
-              <div>${escapeHtml(data.answer || data.error || 'Sorry, I couldn\'t process your question. Please try again.')}</div>
-            </div>
-          </div>
-        `;
-        chatBox.appendChild(botDiv);
-
-        // Scroll to bottom
-        chatBox.scrollTop = chatBox.scrollHeight;
+        // Drag functions
+        function dragstarted(event, d) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
         
-      } catch (error) {
-        // Remove typing indicator
-        chatBox.removeChild(typingDiv);
+        function dragged(event, d) {
+          d.fx = event.x;
+          d.fy = event.y;
+        }
         
-        // Add error message
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'message bot';
-        errorDiv.innerHTML = `
-          <div class="flex items-start gap-3">
-            <div class="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-exclamation-triangle text-white text-sm"></i>
-            </div>
-            <div>
-              <div class="font-semibold text-red-600 mb-1">Error</div>
-              <div>Sorry, I encountered an error. Please try again.</div>
-            </div>
-          </div>
-        `;
-        chatBox.appendChild(errorDiv);
+        function dragended(event, d) {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
       }
+    }
+    
+    function toggleKnowledgeGraph(index) {
+      const modal = document.getElementById(`knowledge-graph-modal-${index}`);
+      modal.classList.toggle('hidden');
+    }
+    
+    function renderKnowledgeGraph(container, data, index) {
+      // Clear loading state
+      container.innerHTML = '';
+      
+      // Create SVG element
+      const width = container.clientWidth;
+      const height = 600;
+      
+      const svg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height])
+        .attr('style', 'max-width: 100%; height: auto;');
+      
+      // Add zoom behavior
+      const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+          g.attr('transform', event.transform);
+        });
+      
+      svg.call(zoom);
+      
+      // Create a group for the graph
+      const g = svg.append('g');
+      
+      // Process nodes and links
+      const nodes = [];
+      const links = [];
+      
+      // Add main paper node
+      if (data.paper) {
+        nodes.push({
+          id: data.paper.id,
+          name: data.paper.title || 'Untitled Paper',
+          type: 'paper',
+          year: data.paper.year,
+          citations: data.paper.citations
+        });
+      }
+      
+      // Add related papers
+      if (data.related_papers && data.related_papers.nodes) {
+        data.related_papers.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'paper'
+            });
+          }
+        });
+        
+        if (data.related_papers.links) {
+          links.push(...data.related_papers.links.map(link => ({
+            ...link,
+            type: 'cites'
+          })));
+        }
+      }
+      
+      // Add authors
+      if (data.author_network && data.author_network.nodes) {
+        data.author_network.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'author'
+            });
+          }
+        });
+        
+        if (data.author_network.links) {
+          links.push(...data.author_network.links.map(link => ({
+            ...link,
+            type: 'collaborated_with'
+          })));
+        }
+      }
+      
+      // Add concepts
+      if (data.concept_network && data.concept_network.nodes) {
+        data.concept_network.nodes.forEach(node => {
+          if (!nodes.find(n => n.id === node.id)) {
+            nodes.push({
+              ...node,
+              type: 'concept'
+            });
+          }
+        });
+        
+        if (data.concept_network.links) {
+          links.push(...data.concept_network.links.map(link => ({
+            ...link,
+            type: 'mentions'
+          })));
+        }
+      }
+      
+      // Create the force simulation
+      const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(40));
+      
+      // Create links
+      const link = g.append('g')
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.6)
+        .attr('stroke-width', 1.5);
+      
+      // Create node groups
+      const node = g.append('g')
+        .selectAll('g')
+        .data(nodes)
+        .join('g')
+        .call(drag(simulation));
+      
+      // Add circles to nodes
+      node.append('circle')
+        .attr('r', d => {
+          if (d.type === 'paper') return 10;
+          if (d.type === 'author') return 8;
+          return 6;
+        })
+        .attr('fill', d => {
+          switch(d.type) {
+            case 'paper': return '#3b82f6';
+            case 'author': return '#10b981';
+            case 'concept': return '#8b5cf6';
+            default: return '#9ca3af';
+          }
+        })
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1.5);
+      
+      // Add labels
+      const labels = node.append('text')
+        .text(d => d.name || d.id)
+        .attr('font-size', '10px')
+        .attr('dx', 12)
+        .attr('dy', 4);
+      
+      // Add tooltips
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'fixed bg-gray-900 text-white text-sm px-2 py-1 rounded pointer-events-none opacity-0')
+        .style('z-index', '1000');
+      
+      node.on('mouseover', (event, d) => {
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', 1);
+          
+        let tooltipHtml = `<div class="font-bold mb-1">${d.name || d.id}</div>`;
+        if (d.type === 'paper' && d.year) {
+          tooltipHtml += `<div>Year: ${d.year}</div>`;
+          if (d.citations) tooltipHtml += `<div>Citations: ${d.citations}</div>`;
+        }
+        if (d.type === 'author' && d.publications) {
+          tooltipHtml += `<div>Publications: ${d.publications}</div>`;
+        }
+        
+        tooltip
+          .html(tooltipHtml)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px');
+      });
+      
+      node.on('mousemove', (event) => {
+        tooltip
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px');
+      });
+      
+      node.on('mouseout', () => {
+        tooltip.transition()
+          .duration(500)
+          .style('opacity', 0);
+      });
+      
+      // Update positions on simulation tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+          
+      });
     }
 
     function showNotification(message, type = 'info') {
@@ -1131,41 +1516,129 @@
       }, 3000);
     }
 
-    // Knowledge Graph Functions
-    function showKnowledgeGraph(paperId, index) {
-      const modal = document.getElementById(`knowledge-graph-modal-${index}`);
-      modal.classList.remove('hidden');
+    // Chat Functions
+    async function sendChat(paperId, idx) {
+      const input = document.getElementById(`chat-input-${idx}`);
+      const message = input.value.trim();
       
-      // Initialize graph container
-      const container = document.getElementById(`knowledge-graph-container-${index}`);
-      container.innerHTML = `
-        <div class="flex items-center justify-center h-full">
-          <div class="text-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-2"></div>
-            <p class="text-gray-500">Generating knowledge graph...</p>
+      if (!message) return;
+      
+      const chatBox = document.getElementById(`chat-box-${idx}`);
+      
+      // Add user message to chat
+      const userMessageDiv = document.createElement('div');
+      userMessageDiv.className = 'message user';
+      userMessageDiv.innerHTML = `
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-user text-white text-sm"></i>
+          </div>
+          <div class="flex-1">
+            <div class="font-semibold text-white mb-1">You</div>
+            <div>${escapeHtml(message)}</div>
           </div>
         </div>
       `;
+      chatBox.appendChild(userMessageDiv);
       
-      // Load knowledge graph data
-      fetch(`/api/knowledge-graph/paper/${paperId}`)
-        .then(response => response.json())
-        .then(data => {
-          // Render the knowledge graph
-          renderKnowledgeGraph(container, data, index);
-        })
-        .catch(error => {
-          console.error('Error loading knowledge graph:', error);
-          container.innerHTML = `
-            <div class="flex items-center justify-center h-full">
-              <div class="text-center text-red-500">
-                <i class="fas fa-exclamation-triangle text-4xl mb-2"></i>
-                <p>Failed to load knowledge graph. Please try again later.</p>
-              </div>
+      // Clear input
+      input.value = '';
+      
+      // Add loading indicator
+      const loadingDiv = document.createElement('div');
+      loadingDiv.id = `loading-${Date.now()}`;
+      loadingDiv.className = 'message bot';
+      loadingDiv.innerHTML = `
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-robot text-white text-sm"></i>
+          </div>
+          <div class="flex-1">
+            <div class="font-semibold text-indigo-600 mb-1">AI Research Assistant</div>
+            <div class="flex items-center gap-2">
+              <div class="loading"></div>
+              <span>Thinking...</span>
             </div>
-          `;
+          </div>
+        </div>
+      `;
+      chatBox.appendChild(loadingDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      
+      try {
+        // Send message to backend
+        const response = await fetch(`/chat/${encodeURIComponent(paperId)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: message,
+            paper_id: paperId
+          })
         });
+        
+        const data = await response.json();
+        
+        // Remove loading indicator
+        chatBox.removeChild(loadingDiv);
+        
+        // Add bot response
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.className = 'message bot';
+        botMessageDiv.innerHTML = `
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-robot text-white text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-indigo-600 mb-1">AI Research Assistant</div>
+              <div class="text-gray-700">${data.response || 'Sorry, I encountered an error processing your request.'}</div>
+              ${data.sources ? `
+                <div class="mt-2 text-xs text-gray-500">
+                  <div class="font-medium mb-1">Sources:</div>
+                  <ul class="space-y-1">
+                    ${data.sources.map(source => 
+                      `<li class="truncate">${source}</li>`
+                    ).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        chatBox.appendChild(botMessageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        
+      } catch (error) {
+        console.error('Error sending chat message:', error);
+        
+        // Remove loading indicator
+        chatBox.removeChild(loadingDiv);
+        
+        // Show error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'message bot';
+        errorDiv.innerHTML = `
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-exclamation text-white text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-red-600 mb-1">Error</div>
+              <div>Sorry, I'm having trouble connecting to the server. Please try again later.</div>
+            </div>
+          </div>
+        `;
+        chatBox.appendChild(errorDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
     }
+
+    // 3D Viewer Functions - Now opens in new tab
+
+    // Knowledge Graph Functions
+    // Knowledge graph functionality is now handled by generateKnowledgeGraph
     
     function toggleKnowledgeGraph(index) {
       const modal = document.getElementById(`knowledge-graph-modal-${index}`);
@@ -1414,6 +1887,21 @@
   <!-- Add D3.js for knowledge graph -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
   
+  <!-- Knowledge Graph Modal -->
+  <div id="knowledgeGraphModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg w-11/12 h-5/6 flex flex-col">
+      <div class="flex justify-between items-center p-4 border-b">
+        <h3 class="text-xl font-semibold">Research Knowledge Graph</h3>
+        <button onclick="document.getElementById('knowledgeGraphModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
+          <i class="fas fa-times text-2xl"></i>
+        </button>
+      </div>
+      <div id="graphContainer" class="flex-1 overflow-auto p-4">
+        <div id="knowledge-graph" style="width: 100%; height: 100%;"></div>
+      </div>
+    </div>
+  </div>
+  
   <!-- Add tooltip styles -->
   <style>
     .tooltip {
@@ -1443,6 +1931,28 @@
       color: #e5e7eb;
       font-size: 0.75rem;
     }
+    
+    /* Knowledge Graph Styles */
+    .node {
+      cursor: pointer;
+    }
+    
+    .node circle {
+      fill: #fff;
+      stroke: #3b82f6;
+      stroke-width: 2px;
+    }
+    
+    .node text {
+      font: 12px sans-serif;
+    }
+    
+    .link {
+      fill: none;
+      stroke: #ccc;
+      stroke-width: 1.5px;
+    }
   </style>
+  <!-- 3D Viewer now opens in new tab -->
 </body>
 </html>

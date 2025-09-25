@@ -47,7 +47,16 @@ class KnowledgeGraph:
         """Initialize the knowledge graph."""
         self.data_dir = data_dir
         self.graph = nx.DiGraph()
-        self.nlp = spacy.load("en_core_web_sm")
+        
+        # Try to load spacy model, but don't fail if not available
+        self.nlp = None
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            print("Warning: en_core_web_sm model not found. Some NLP features will be disabled.")
+            print("To enable full functionality, run: python -m spacy download en_core_web_sm")
+        except Exception as e:
+            print(f"Error loading spacy model: {e}")
         self.entity_types = [t.value for t in EntityType]
         self.relation_types = [r.value for r in RelationType]
         self._init_groq_client()
@@ -63,7 +72,7 @@ class KnowledgeGraph:
         try:
             self.llm = ChatGroq(
                 temperature=0.3,
-                model_name="llama-3-70b-8192",
+                model_name="llama-3.3-70b-versatile",
                 groq_api_key=groq_api_key,
                 max_tokens=4000
             )

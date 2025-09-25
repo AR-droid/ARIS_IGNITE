@@ -35,6 +35,11 @@ myenv/
 *.swo
 *~
 
+# Jupyter Notebooks
+.ipynb_checkpoints
+notebooks/*.ipynb
+notebooks/*.json
+
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -44,10 +49,55 @@ myenv/
 ehthumbs.db
 Thumbs.db
 
+# Temporary files
+*~
+*.bak
+*.tmp
+*.temp
+*.*~
+
 # Project specific
 generated_media/
 generated_videos/
 media/
+
+# Local development
+*.log
+
+# Ignore large data files
+*.csv
+*.dat
+*.db
+*.sqlite3
+*.xlsx
+*.xls
+*.pkl
+*.h5
+*.hdf5
+*.pdf
+*.zip
+*.tar.gz
+
+# Ignore test files
+test_*.py
+*_test.py
+
+# Ignore backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# Ignore IDE specific files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+desktop.ini
 temp_manim/
 temp_video/
 test_output/
